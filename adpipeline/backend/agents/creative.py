@@ -95,10 +95,20 @@ def generate_copy(profile: ProductProfile, skill: dict, plan_summary: str,
     chunks = store.retrieve("brand_guidelines",
                             f"{profile.name} tone banned claims {gl}", k=3)
     ctx = format_context(chunks)
+    if campaign_angle:
+        brief = (
+            f"APPROVED PLAN SUMMARY: {plan_summary}\n"
+            f"APPROVED CAMPAIGN ANGLE (your creative direction): {campaign_angle}\n"
+        )
+    else:
+        brief = (
+            "STANDALONE MODE — NO APPROVED PLAN: this is a solo run. Derive the "
+            "creative direction yourself from the product profile and the brand "
+            f"guidelines below.\nOBJECTIVE / BRIEF: {plan_summary}\n"
+        )
     user = (
         f"PRODUCT PROFILE: {profile.model_dump_json()}\n"
-        f"APPROVED PLAN SUMMARY: {plan_summary}\n"
-        f"APPROVED CAMPAIGN ANGLE (your creative direction): {campaign_angle}\n"
+        f"{brief}"
         f"SKILL: {skill['command']} — {skill['description']}\n"
         f"PLATFORM RULES: {skill['platform_rules']}\n"
         f"## BRAND GUIDELINES\n{ctx}\n\n"

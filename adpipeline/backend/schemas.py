@@ -56,6 +56,7 @@ class CampaignResponse(BaseModel):
     product: str
     objective: str
     status: str
+    mode: str = "chain"       # chain (gated handoffs) | solo (standalone agents)
     research: Optional[ResearchOutput] = None
     plan: Optional[PlanOutput] = None
     used_feedback: Optional[str] = None
@@ -65,6 +66,29 @@ class CampaignResponse(BaseModel):
 class CampaignInput(BaseModel):
     product: str
     objective: str
+
+
+# ---- Solo mode (standalone agents, no gates) ----
+class SoloResearchInput(BaseModel):
+    product: str
+    objective: str
+
+
+class SoloPlanInput(BaseModel):
+    product: Optional[str] = None      # required unless campaign_id given
+    objective: Optional[str] = None
+    campaign_id: Optional[int] = None  # reuse an existing solo campaign (its research
+                                       # becomes optional context for the plan)
+
+
+class SoloCreativeInput(BaseModel):
+    url: str
+    skill: str
+    product: Optional[str] = None      # used when no campaign_id (fresh solo run)
+    objective: Optional[str] = None    # becomes the creative brief in solo mode
+    campaign_id: Optional[int] = None  # reuse an existing solo campaign
+    reference_id: Optional[str] = None
+    prompt_tweak: Optional[str] = None
 
 
 class StageDecisionInput(BaseModel):

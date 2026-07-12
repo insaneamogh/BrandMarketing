@@ -53,20 +53,36 @@ def _live_signal(product: str) -> str:
         task="gemini_search")
 
 
-def run(product: str, objective: str, research_json: str,
+def run(product: str, objective: str, research_json: str = None,
         human_feedback: str = "") -> tuple[PlanOutput, list]:
+    """research_json=None -> STANDALONE (solo) run: plan directly from context."""
     query = f"{product} marketing strategy {objective} positioning competitors channels growth"
-    chunks = store.retrieve_many(
-        ["market_intel", "brand_guidelines", "channel_metrics"], query, k=3)
+    # solo runs get campaign history too, since there is no Agent 1 report to lean on
+    collections = ["market_intel", "brand_guidelines", "channel_metrics"]
+    if not research_json:
+        collections.append("campaign_history")
+    chunks = store.retrieve_many(collections, query, k=3)
     ctx = format_context(chunks)
     live = _live_signal(product)
     live_block = f"\n## LIVE MARKET SIGNAL (Gemini google_search)\n{live}\n" if live else ""
 
+    if research_json:
+        research_block = (
+            "## APPROVED RESEARCH REPORT (Agent 1, human-approved — build on this)\n"
+            f"{research_json}\n"
+        )
+    else:
+        research_block = (
+            "## STANDALONE MODE — NO UPSTREAM RESEARCH\n"
+            "This is a solo run: no Agent 1 report exists. Ground every claim "
+            "directly in the retrieved context below — do not assume or invent a "
+            "prior diagnosis.\n"
+        )
+
     user = (
         f"PRODUCT: {product}\nOBJECTIVE: {objective}\n"
         f"{feedback_block(human_feedback)}\n"
-        f"## APPROVED RESEARCH REPORT (Agent 1, human-approved — build on this)\n"
-        f"{research_json}\n\n"
+        f"{research_block}\n"
         f"## CONTEXT\n{ctx}\n{live_block}\n"
         "Produce the plan. JSON schema:\n"
         '{"plan_summary": str, "campaign_angle": str, "target_segment": str, '

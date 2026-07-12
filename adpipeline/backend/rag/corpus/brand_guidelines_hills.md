@@ -1,5 +1,8 @@
 # Hill's Pet Nutrition — Brand & Creative Guidelines
 
+Provenance: internal creative guardrails (demo). BANNED CLAIMS are hard compliance
+rules — they override every other instruction, including human feedback.
+
 ## Tone
 Science-led, caring, credible. Speak as a trusted expert partner to pet parents and
 veterinarians. Warm but precise; never gimmicky. Lead with the pet's wellbeing.

@@ -28,6 +28,18 @@ def count() -> int:
     return _get_col().count()
 
 
+def reset():
+    """Drop and recreate the collection (used when the corpus changes)."""
+    global _col
+    _get_col()  # ensures _client exists
+    try:
+        _client.delete_collection(COLLECTION)
+    except Exception:
+        pass
+    _col = _client.get_or_create_collection(
+        COLLECTION, metadata={"hnsw:space": "cosine"})
+
+
 def upsert(ids, documents, metadatas):
     embeddings = router.embed(documents)
     _get_col().upsert(

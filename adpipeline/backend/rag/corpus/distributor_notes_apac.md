@@ -1,5 +1,8 @@
 # APAC Distribution Notes
 
+Provenance: internal field notes (MOCK, illustrative for this demo). Real
+quick-commerce market data lives in quick_commerce_india.md.
+
 ## Fractured specialty distribution (Hill's)
 Pet specialty and veterinary distribution across APAC is fragmented. Unlike NA/EU,
 there is no dense, consolidated vet-clinic + specialty-retail network. Distribution
@@ -14,13 +17,15 @@ cities. This is the primary structural blocker to Hill's growth in the region.
 - Marketplace listings frequently show "unavailable" or grey-market third-party
   sellers, hurting trust and price integrity.
 - Lesson from past campaigns: paid demand generation into OOS markets wastes spend
-  (see APAC Awareness Push). Confirm retail/marketplace readiness before funding
-  awareness.
+  (see the APAC Awareness Push in campaign_history.md: $110k spend, 0.9x ROAS).
+  Confirm retail/marketplace readiness before funding awareness.
 
 ## Quick-commerce availability
 Quick-commerce is expanding availability fastest in India metros (Blinkit, Zepto,
-Instamart) and select LatAm cities. For personal care (Palmolive), quick-commerce is
-now a primary impulse channel. For pet nutrition, quick-commerce assortment is still
+Instamart) and select LatAm cities — India quick-commerce GMV was $6–7 billion in
+2024 and is forecast to compound ~40% annually (real figures in
+quick_commerce_india.md). For personal care (Palmolive), quick-commerce is now a
+primary impulse channel. For pet nutrition, quick-commerce assortment is still
 thin but growing for mainstream SKUs.
 
 ## Recommendation

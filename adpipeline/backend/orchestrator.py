@@ -53,6 +53,7 @@ def _pending_feedback(db, campaign_id: int, stage: str):
 def _campaign_response(db, c: Campaign, used_feedback: str = None) -> dict:
     return CampaignResponse(
         id=c.id, product=c.product, objective=c.objective, status=c.status,
+        mode=c.mode or "chain",
         research=(ResearchOutput.model_validate_json(c.research_json)
                   if c.research_json else None),
         plan=(PlanOutput.model_validate_json(c.plan_json)
@@ -96,7 +97,8 @@ async def _run_research(db, c: Campaign) -> dict:
             researcher.run, c.product, c.objective, feedback)
         c.research_json = research.model_dump_json()
         c.plan_json = None                       # stale plan dies with new research
-        c.status = "research_pending"
+        # solo campaigns have no gates, so there is nothing "pending"
+        c.status = "solo_research" if (c.mode or "chain") == "solo" else "research_pending"
         for r in fb_rows:
             r.consumed = 1
         db.commit()
@@ -134,6 +136,81 @@ async def run_plan(campaign_id: int) -> dict:
         db.close()
 
 
+# ---------------- solo mode (standalone agents, no gates) ----------------
+async def solo_research(product: str, objective: str) -> dict:
+    """Agent 1 standalone — same researcher, no downstream handoff required."""
+    db = SessionLocal()
+    try:
+        c = Campaign(product=product, objective=objective,
+                     status="solo_research", mode="solo")
+        db.add(c)
+        db.commit()
+        db.refresh(c)
+        return await _run_research(db, c)
+    finally:
+        db.close()
+
+
+async def solo_plan(product: str = None, objective: str = None,
+                    campaign_id: int = None) -> dict:
+    """Agent 2 standalone. Without a campaign_id it plans from scratch (grounded
+    directly in the corpus). With one, any research already on that solo campaign
+    becomes optional context — but it is never required."""
+    db = SessionLocal()
+    try:
+        if campaign_id:
+            c = db.get(Campaign, campaign_id)
+            if not c:
+                raise ValueError("campaign not found")
+            if (c.mode or "chain") != "solo":
+                raise ValueError("solo plan requires a solo campaign — use the chained flow instead")
+        else:
+            if not product or not objective:
+                raise ValueError("product and objective are required to start a solo plan")
+            c = Campaign(product=product, objective=objective,
+                         status="solo_plan", mode="solo")
+            db.add(c)
+            db.commit()
+            db.refresh(c)
+        token = cost.current_campaign_id.set(c.id)
+        try:
+            plan, _ = await asyncio.to_thread(
+                planner.run, c.product, c.objective, c.research_json, "")
+            c.plan_json = plan.model_dump_json()
+            c.status = "solo_plan"
+            db.commit()
+            return _campaign_response(db, c)
+        finally:
+            cost.current_campaign_id.reset(token)
+    finally:
+        db.close()
+
+
+async def solo_creative(url: str, skill: str, product: str = None,
+                        objective: str = None, campaign_id: int = None,
+                        reference_id: str = None, prompt_tweak: str = None) -> dict:
+    """Agent 3 standalone — 'just generate an ad'. No plan required: the objective
+    (or the product profile alone) is the brief."""
+    db = SessionLocal()
+    try:
+        if campaign_id:
+            c = db.get(Campaign, campaign_id)
+            if not c:
+                raise ValueError("campaign not found")
+            if (c.mode or "chain") != "solo":
+                raise ValueError("solo creative requires a solo campaign — use the chained flow instead")
+        else:
+            c = Campaign(product=product or "Standalone creative",
+                         objective=objective or "Standalone ad generation",
+                         status="solo_creative", mode="solo")
+            db.add(c)
+            db.commit()
+            db.refresh(c)
+        return await _generate_creative(db, c, url, skill, reference_id, prompt_tweak)
+    finally:
+        db.close()
+
+
 # ---------------- human gates ----------------
 def decide(campaign_id: int, stage: str, action: str, feedback: str = None) -> dict:
     if stage not in _STAGES:
@@ -145,6 +222,8 @@ def decide(campaign_id: int, stage: str, action: str, feedback: str = None) -> d
         c = db.get(Campaign, campaign_id)
         if not c:
             raise ValueError("campaign not found")
+        if (c.mode or "chain") == "solo":
+            raise ValueError("solo campaigns have no approval gates")
         if stage == "research" and not c.research_json:
             raise ValueError("nothing to decide: research has not run")
         if stage == "plan" and not c.plan_json:
@@ -173,66 +252,76 @@ async def run_creative(campaign_id: int, url: str, skill: str,
         c = db.get(Campaign, campaign_id)
         if not c:
             raise ValueError("campaign not found")
-        if c.status not in ("plan_approved", "published"):
+        # chain mode is gated on an approved plan; solo campaigns run any time
+        if (c.mode or "chain") != "solo" and c.status not in ("plan_approved", "published"):
             raise ValueError(
                 f"creative requires an approved plan (campaign is {c.status})")
-        plan = PlanOutput.model_validate_json(c.plan_json)
-
-        reference_png, reference_path = None, None
-        if reference_id:
-            reference_path = str(REF_DIR / reference_id)
-            p = Path(reference_path)
-            if not p.exists():
-                raise ValueError("reference image not found — upload it first")
-            reference_png = p.read_bytes()
-
-        token = cost.current_campaign_id.set(c.id)
-        try:
-            skill_def = _get_skill(skill)
-            profile = await asyncio.to_thread(url_diagnosis.diagnose, url)
-
-            copy_blocks = await asyncio.to_thread(
-                creative_agent.generate_copy, profile, skill_def,
-                plan.plan_summary, plan.campaign_angle)
-
-            creative = Creative(
-                campaign_id=c.id, url=url, skill=skill,
-                reference_path=reference_path, prompt_tweak=prompt_tweak,
-                profile_json=profile.model_dump_json(),
-                copy_json=json.dumps(copy_blocks))
-            db.add(creative)
-            db.commit()
-            db.refresh(creative)
-
-            brand = _brand_key(profile)
-            asset_rows = await asyncio.to_thread(
-                creative_agent.generate_assets, profile, skill_def,
-                _cache_lookup, reference_png, prompt_tweak or "")
-
-            assets_out = []
-            for a in asset_rows:
-                rec = Asset(
-                    creative_id=creative.id, campaign_id=c.id, brand=brand,
-                    skill=skill, kind=a["kind"], prompt=a["prompt"],
-                    prompt_hash=a["prompt_hash"], aspect=a["aspect"],
-                    quality=a["quality"], path=a["path"],
-                    from_cache=1 if a["from_cache"] else 0,
-                    cache_hit=1 if a["cache_hit"] else 0,
-                    origin=a["origin"], cost_usd=a["cost_usd"])
-                db.add(rec)
-                db.commit()
-                db.refresh(rec)
-                assets_out.append(_asset_out(rec))
-
-            return CreativeResponse(
-                creative_id=creative.id, campaign_id=c.id, profile=profile,
-                assets=assets_out, copy_blocks=copy_blocks,
-                reference_used=bool(reference_png), prompt_tweak=prompt_tweak,
-                cost_usd=_campaign_cost(db, c.id)).model_dump()
-        finally:
-            cost.current_campaign_id.reset(token)
+        return await _generate_creative(db, c, url, skill, reference_id, prompt_tweak)
     finally:
         db.close()
+
+
+async def _generate_creative(db, c: Campaign, url: str, skill: str,
+                             reference_id: str = None, prompt_tweak: str = None) -> dict:
+    """Shared Agent 3 body. Works with OR without a plan: with one, the approved
+    campaign angle is the brief; without (solo), the objective is the brief."""
+    plan = PlanOutput.model_validate_json(c.plan_json) if c.plan_json else None
+    plan_summary = plan.plan_summary if plan else (c.objective or "Standalone ad generation")
+    campaign_angle = plan.campaign_angle if plan else ""
+
+    reference_png, reference_path = None, None
+    if reference_id:
+        reference_path = str(REF_DIR / reference_id)
+        p = Path(reference_path)
+        if not p.exists():
+            raise ValueError("reference image not found — upload it first")
+        reference_png = p.read_bytes()
+
+    token = cost.current_campaign_id.set(c.id)
+    try:
+        skill_def = _get_skill(skill)
+        profile = await asyncio.to_thread(url_diagnosis.diagnose, url)
+
+        copy_blocks = await asyncio.to_thread(
+            creative_agent.generate_copy, profile, skill_def,
+            plan_summary, campaign_angle)
+
+        creative = Creative(
+            campaign_id=c.id, url=url, skill=skill,
+            reference_path=reference_path, prompt_tweak=prompt_tweak,
+            profile_json=profile.model_dump_json(),
+            copy_json=json.dumps(copy_blocks))
+        db.add(creative)
+        db.commit()
+        db.refresh(creative)
+
+        brand = _brand_key(profile)
+        asset_rows = await asyncio.to_thread(
+            creative_agent.generate_assets, profile, skill_def,
+            _cache_lookup, reference_png, prompt_tweak or "")
+
+        assets_out = []
+        for a in asset_rows:
+            rec = Asset(
+                creative_id=creative.id, campaign_id=c.id, brand=brand,
+                skill=skill, kind=a["kind"], prompt=a["prompt"],
+                prompt_hash=a["prompt_hash"], aspect=a["aspect"],
+                quality=a["quality"], path=a["path"],
+                from_cache=1 if a["from_cache"] else 0,
+                cache_hit=1 if a["cache_hit"] else 0,
+                origin=a["origin"], cost_usd=a["cost_usd"])
+            db.add(rec)
+            db.commit()
+            db.refresh(rec)
+            assets_out.append(_asset_out(rec))
+
+        return CreativeResponse(
+            creative_id=creative.id, campaign_id=c.id, profile=profile,
+            assets=assets_out, copy_blocks=copy_blocks,
+            reference_used=bool(reference_png), prompt_tweak=prompt_tweak,
+            cost_usd=_campaign_cost(db, c.id)).model_dump()
+    finally:
+        cost.current_campaign_id.reset(token)
 
 
 def _asset_out(rec: Asset) -> AssetOut:
@@ -250,12 +339,13 @@ async def run_placement(creative_id: int) -> dict:
         if not creative:
             raise ValueError("creative not found")
         profile = ProductProfile.model_validate_json(creative.profile_json)
-        plan = PlanOutput.model_validate_json(creative.campaign.plan_json)
+        plan_json = creative.campaign.plan_json  # None on solo runs without a plan
+        angle = PlanOutput.model_validate_json(plan_json).campaign_angle if plan_json else ""
         kinds = [a.kind for a in creative.assets]
         token = cost.current_campaign_id.set(creative.campaign_id)
         try:
             resp = await asyncio.to_thread(
-                creative_agent.placement, kinds, profile, plan.campaign_angle)
+                creative_agent.placement, kinds, profile, angle)
         finally:
             cost.current_campaign_id.reset(token)
         resp.creative_id = creative_id
@@ -441,7 +531,7 @@ def campaign_history() -> dict:
             spend = round(sum(a.cost_usd or 0 for cr in c.creatives for a in cr.assets), 3)
             items.append({
                 "id": c.id, "product": c.product, "objective": c.objective,
-                "status": c.status,
+                "status": c.status, "mode": c.mode or "chain",
                 "created_at": c.created_at.isoformat() + "Z",
                 "creatives": len(c.creatives),
                 "assets": n_assets,

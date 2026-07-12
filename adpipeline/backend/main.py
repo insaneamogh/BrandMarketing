@@ -12,6 +12,7 @@ from models import Asset, SessionLocal, init_db
 from rag import ingest
 from schemas import (
     CampaignInput, CreativeInput, PlacementInput, PublishInput,
+    SoloCreativeInput, SoloPlanInput, SoloResearchInput,
     StageDecisionInput, VariantInput, VideoInput,
 )
 
@@ -27,7 +28,7 @@ app.add_middleware(
 @app.on_event("startup")
 def _startup():
     init_db()
-    ingest.ingest_if_empty()
+    ingest.ingest_if_stale()   # re-embeds automatically when corpus files change
 
 
 @app.get("/health")
@@ -103,6 +104,38 @@ def decide(campaign_id: int, inp: StageDecisionInput):
     """Human gate: approve hands off to the next agent; reject stores feedback."""
     try:
         return orchestrator.decide(campaign_id, inp.stage, inp.action, inp.feedback)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+# ---------------- solo mode (standalone agents, no gates) ----------------
+@app.post("/solo/research")
+async def solo_research(inp: SoloResearchInput):
+    """Agent 1 standalone — research a product/objective with no handoff chain."""
+    try:
+        return await orchestrator.solo_research(inp.product, inp.objective)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/solo/plan")
+async def solo_plan(inp: SoloPlanInput):
+    """Agent 2 standalone — plan directly from the knowledge base. Optionally pass
+    campaign_id of a prior solo run to reuse its research as context."""
+    try:
+        return await orchestrator.solo_plan(inp.product, inp.objective, inp.campaign_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/solo/creative")
+async def solo_creative(inp: SoloCreativeInput):
+    """Agent 3 standalone — 'just generate an ad': URL + skill, no approved plan
+    required. Optionally continue a prior solo campaign via campaign_id."""
+    try:
+        return await orchestrator.solo_creative(
+            inp.url, inp.skill, inp.product, inp.objective,
+            inp.campaign_id, inp.reference_id, inp.prompt_tweak)
     except ValueError as e:
         raise HTTPException(400, str(e))
 

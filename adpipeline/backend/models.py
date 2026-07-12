@@ -36,6 +36,7 @@ class Campaign(Base):
     product = Column(String, nullable=False)
     objective = Column(Text, nullable=False)
     status = Column(String, default="research_pending")
+    mode = Column(String, default="chain")        # chain (gated handoffs) | solo (standalone agents)
     research_json = Column(Text)                  # Agent 1 output (ResearchOutput)
     plan_json = Column(Text)                      # Agent 2 output (PlanOutput)
     created_at = Column(DateTime, default=_now)
@@ -123,3 +124,15 @@ class LLMCall(Base):
 
 def init_db():
     Base.metadata.create_all(engine)
+    # best-effort micro-migration: add campaigns.mode to DBs created before the
+    # solo-agents feature (create_all never alters existing tables).
+    try:
+        with engine.connect() as conn:
+            cols = [row[1] for row in
+                    conn.exec_driver_sql("PRAGMA table_info(campaigns)")]
+            if cols and "mode" not in cols:
+                conn.exec_driver_sql(
+                    "ALTER TABLE campaigns ADD COLUMN mode VARCHAR DEFAULT 'chain'")
+                conn.commit()
+    except Exception:
+        pass  # non-SQLite backends: manage the column with a real migration

@@ -13,6 +13,14 @@ tweakable) and puts an **Approve & Publish** button plus **probability-scored
 expected metrics** in front of the user. Rejection feedback at any gate re-runs
 that agent with the feedback injected.
 
+**Two run modes (toggle at the top of the UI):**
+- **⛓ Chained pipeline** — the full gated handoff described above.
+- **◇ Solo agents** — every agent runs standalone, no gates, no handoffs: run
+  Agent 1 for a quick portfolio diagnosis, Agent 2 for a plan built straight from
+  the knowledge base, or jump directly to Agent 3 and *just generate an ad*
+  (the objective becomes the creative brief). Solo runs are recorded in History
+  like any campaign and can still flow into placement → publish.
+
 ## State machine
 
 ```mermaid
@@ -158,12 +166,16 @@ All optional model-id overrides are documented in `.env.example`.
 
 ## ⬜ What's left for you (the only two things)
 
-1. **Fill the RAG corpus** — the 9 files in `backend/rag/corpus/*.md` hold plausible
-   mock data; replace with your case-study numbers. Plain markdown, tables welcome;
-   paragraphs chunk to ~300 tokens. New files must be registered in
-   `backend/rag/ingest.py::MANIFEST` with their logical collections. Keep a
-   **BANNED CLAIMS** section in each brand-guidelines file — two agents enforce it.
-   After editing, delete `DATA_DIR/chroma` so it re-ingests.
+1. **Extend the RAG corpus (optional)** — the 12 files in `backend/rag/corpus/*.md`
+   mix REAL public data (Hill's FY2024 financials, 2025 Meta/Amazon ad benchmarks,
+   India quick-commerce market data, senior-pet demographics, Filorga impairments)
+   with realistic internal mock data; every file states its provenance at the top,
+   and mock figures are cross-checked against the real benchmarks so retrieval never
+   contradicts itself. Plain markdown, tables welcome; paragraphs chunk to ~300
+   tokens. New files must be registered in `backend/rag/ingest.py::MANIFEST` with
+   their logical collections. Keep a **BANNED CLAIMS** section in each
+   brand-guidelines file — two agents enforce it. Re-ingest is automatic: the index
+   is fingerprinted against the corpus and rebuilds on the next boot after any edit.
 2. **Set the API keys on Railway** — `GOOGLE_API_KEY`, `OPENAI_API_KEY`,
    `SEEDANCE_API_KEY` (optional), plus `DATA_DIR=/data` with a Volume mounted at
    `/data`. Never commit `.env`.
@@ -211,6 +223,9 @@ POST /campaigns/{id}/research         re-run Agent 1 (consumes rejection feedbac
 POST /campaigns/{id}/plan             hand approved research to Agent 2
 POST /campaigns/{id}/decision         {stage: research|plan, action: approve|reject, feedback?}
 POST /creative                        {campaign_id, url, skill, reference_id?, prompt_tweak?}
+POST /solo/research                   {product, objective} -> Agent 1 standalone (no gates)
+POST /solo/plan                       {product?, objective?, campaign_id?} -> Agent 2 standalone
+POST /solo/creative                   {url, skill, product?, objective?, campaign_id?, reference_id?, prompt_tweak?}
 POST /placement                       {creative_id} -> placements + expected metrics w/ probability
 POST /publish                         {creative_id} -> Approve & Publish (POC: recorded in DB)
 POST /video                           {creative_id} -> Seedance render | prompt (if disabled)

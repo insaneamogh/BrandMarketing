@@ -1,15 +1,20 @@
-"""Chunk (~300 tokens) + embed + upsert the corpus. Runs once at startup if empty.
+"""Chunk (~300 tokens) + embed + upsert the corpus. Runs at startup.
 
 Each corpus file is tagged with one or more logical collections so agents can
 retrieve by group (market_intel, sales, distribution, channel_metrics,
 campaign_history, brand_guidelines). Chroma metadata is scalar-only, so a chunk
 that belongs to N collections is upserted N times with distinct ids.
+
+The index is fingerprinted against the corpus: if any corpus file (or the
+manifest) changes, the whole collection is wiped and re-embedded so the vector
+DB never serves stale chunks.
 """
+import hashlib
 from pathlib import Path
 
 import tiktoken
 
-from config import CORPUS_DIR
+from config import CHROMA_DIR, CORPUS_DIR
 from rag import store
 
 # file -> (collections, product, region)
@@ -23,9 +28,25 @@ MANIFEST = {
     "brand_guidelines_palmolive.md": (["brand_guidelines"], "palmolive", "global"),
     "distributor_notes_apac.md":   (["distribution"], "all", "apac"),
     "competitor_snapshot.md":      (["market_intel"], "all", "global"),
+    # real public data layered on the mock internal data:
+    "industry_ad_benchmarks.md":   (["channel_metrics", "market_intel"], "all", "global"),
+    "senior_pet_demographics.md":  (["market_intel", "campaign_history"], "hills", "global"),
+    "quick_commerce_india.md":     (["distribution", "channel_metrics", "market_intel"], "palmolive", "india"),
 }
 
-_enc = tiktoken.get_encoding("cl100k_base")
+_enc = None  # lazy: tiktoken downloads its BPE file on first use
+
+
+def _tok_len(text: str) -> int:
+    global _enc
+    if _enc is None:
+        try:
+            _enc = tiktoken.get_encoding("cl100k_base")
+        except Exception:
+            _enc = False  # offline — fall back to a ~4 chars/token estimate
+    if _enc:
+        return len(_enc.encode(text))
+    return max(1, len(text) // 4)
 
 
 def _chunk(text: str, target_tokens: int = 300):
@@ -33,7 +54,7 @@ def _chunk(text: str, target_tokens: int = 300):
     paras = [p.strip() for p in text.split("\n\n") if p.strip()]
     chunks, cur, cur_tok = [], [], 0
     for p in paras:
-        n = len(_enc.encode(p))
+        n = _tok_len(p)
         if cur_tok + n > target_tokens and cur:
             chunks.append("\n\n".join(cur))
             cur, cur_tok = [], 0
@@ -42,6 +63,18 @@ def _chunk(text: str, target_tokens: int = 300):
     if cur:
         chunks.append("\n\n".join(cur))
     return chunks
+
+
+def corpus_fingerprint() -> str:
+    """Hash of the manifest + every corpus file's bytes — detects any change."""
+    h = hashlib.sha256()
+    for fname in sorted(MANIFEST):
+        h.update(fname.encode())
+        h.update(repr(MANIFEST[fname]).encode())
+        path = Path(CORPUS_DIR) / fname
+        if path.exists():
+            h.update(path.read_bytes())
+    return h.hexdigest()
 
 
 def ingest():
@@ -66,10 +99,23 @@ def ingest():
     return len(ids)
 
 
-def ingest_if_empty():
+def ingest_if_stale():
+    """(Re-)ingest when the index is empty OR the corpus changed since last ingest."""
+    marker = Path(CHROMA_DIR) / "corpus_fingerprint.txt"
     try:
-        if store.count() == 0:
-            n = ingest()
-            print(f"[ingest] embedded {n} chunks")
+        fp = corpus_fingerprint()
+        fresh = (store.count() > 0 and marker.exists()
+                 and marker.read_text().strip() == fp)
+        if fresh:
+            return
+        store.reset()
+        n = ingest()
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text(fp)
+        print(f"[ingest] embedded {n} chunks (corpus {fp[:12]})")
     except Exception as e:  # no API key etc. — don't block startup
         print(f"[ingest] skipped: {e}")
+
+
+# kept for backwards compatibility with older callers
+ingest_if_empty = ingest_if_stale

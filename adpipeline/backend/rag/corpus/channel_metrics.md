@@ -1,7 +1,9 @@
 # Channel Metrics — CPL / CVR by Channel & Region (MOCK)
 
-These are illustrative demo figures, not audited results. Use them to reason about
-where to place spend and to project campaign efficiency.
+Provenance: MOCK — illustrative internal demo figures, not audited results. They are
+deliberately kept in a realistic range; sanity-check them against the REAL public
+figures in industry_ad_benchmarks.md. Use them to reason about where to place spend
+and to project campaign efficiency.
 
 ## Cost Per Lead (CPL) by channel and region
 | Channel            | Region | CPL (USD) |
@@ -34,3 +36,10 @@ where to place spend and to project campaign efficiency.
   conversion channel for Hill's Science Diet.
 - Quick-commerce in India combines low CPL ($2.40) and strong CVR (4.6%) — the
   standout efficiency play for Palmolive Luminous Oils in India metros.
+
+## Definitions (how these reconcile with public benchmarks)
+- A "lead" here is a light action (add-to-cart, email/quiz signup), which is why
+  internal CPLs ($2.40–$14.00) sit below the public Meta lead-ads median CPL of
+  $27.66 (see industry_ad_benchmarks.md) — compare trends, not absolute levels.
+- CVR here is click-to-purchase on paid (mostly cold) traffic; public platform-wide
+  Amazon CVR (10–12%) includes branded, high-intent search, so it runs higher.

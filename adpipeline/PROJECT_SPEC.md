@@ -113,6 +113,9 @@ POST /campaigns/{id}/research   re-run Agent 1 (consumes rejection feedback)
 POST /campaigns/{id}/plan       hand approved research to Agent 2
 POST /campaigns/{id}/decision   {stage: research|plan, action: approve|reject, feedback?}
 POST /creative                  {campaign_id, url, skill, reference_id?, prompt_tweak?}
+POST /solo/research             {product, objective} -> Agent 1 standalone (no gates)
+POST /solo/plan                 {product?, objective?, campaign_id?} -> Agent 2 standalone
+POST /solo/creative             {url, skill, product?, objective?, campaign_id?, ...} -> just generate an ad
 POST /placement                 {creative_id} -> placements + expected metrics w/ probability
 POST /publish                   {creative_id} -> Approve & Publish (POC: recorded in DB)
 POST /video                     {creative_id} -> Seedance render | prompt (if disabled)

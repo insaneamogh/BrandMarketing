@@ -44,6 +44,14 @@ const FLOW = [
   { key: "creative", step: "04", label: "Creative Studio", sub: "Agent 3 · make & publish" },
 ];
 
+// sidebar sublabels when the toggle is on Solo agents (standalone runs, no gates)
+const SOLO_SUBS = {
+  overview: "Pick an agent",
+  research: "Agent 1 · standalone",
+  plan: "Agent 2 · standalone",
+  creative: "Agent 3 · standalone",
+};
+
 const PRODUCTS = ["Hill's Youthful Vitality", "Palmolive Luminous Oils"];
 const SKILLS = [
   { cmd: "/product-shoot", d: "4 hero images — packshot, macro, lifestyle, flat-lay" },
@@ -76,6 +84,10 @@ async function uploadFile(path, file) {
 
 export default function App() {
   const [view, setView] = useState("overview");
+  // "chain" = gated handoffs 1→2→3 · "solo" = run any agent standalone
+  const [mode, setMode] = useState(() => {
+    try { return localStorage.getItem("adp_mode") || "chain"; } catch { return "chain"; }
+  });
   const [product, setProduct] = useState(PRODUCTS[0]);
   const [objective, setObjective] = useState(
     "Grow senior-pet demand efficiently in NA/EU and test scalable channels"
@@ -101,6 +113,99 @@ export default function App() {
     try {
       setCost(await api("/cost"));
     } catch {}
+  };
+
+  const switchMode = (m) => {
+    if (m === mode) return;
+    setMode(m);
+    try { localStorage.setItem("adp_mode", m); } catch {}
+    // don't mix a chained campaign's state with solo runs (and vice versa)
+    setCampaign(null);
+    setCreative(null);
+    setPlacement(null);
+    setPublished(null);
+    setError("");
+    setView("overview");
+  };
+
+  // reuse the in-flight solo campaign only while product/objective are unchanged;
+  // editing either starts a fresh standalone run
+  const soloReuseId = () =>
+    campaign?.mode === "solo" && campaign.product === product && campaign.objective === objective
+      ? campaign.id
+      : null;
+
+  const soloResearch = async () => {
+    setError("");
+    setLoading("Agent 1 (solo) — researching standalone…");
+    try {
+      const res = await api("/solo/research", {
+        method: "POST",
+        body: JSON.stringify({ product, objective }),
+      });
+      setCampaign(res);
+      setCreative(null);
+      setPlacement(null);
+      setPublished(null);
+      setView("research");
+      refreshCost();
+    } catch (e) {
+      setError(String(e.message || e));
+    } finally {
+      setLoading("");
+    }
+  };
+
+  const soloPlan = async () => {
+    setError("");
+    setLoading("Agent 2 (solo) — planning straight from the knowledge base…");
+    try {
+      const reuse = soloReuseId();
+      const res = await api("/solo/plan", {
+        method: "POST",
+        body: JSON.stringify(reuse ? { campaign_id: reuse } : { product, objective }),
+      });
+      setCampaign(res);
+      setView("plan");
+      refreshCost();
+    } catch (e) {
+      setError(String(e.message || e));
+    } finally {
+      setLoading("");
+    }
+  };
+
+  const soloCreative = async (url, skill, referenceId, promptTweak) => {
+    setError("");
+    setLoading("Agent 3 (solo) — diagnosing URL + generating assets…");
+    try {
+      const res = await api("/solo/creative", {
+        method: "POST",
+        body: JSON.stringify({
+          url,
+          skill,
+          product,
+          objective,
+          campaign_id: soloReuseId(),
+          reference_id: referenceId || null,
+          prompt_tweak: promptTweak || null,
+        }),
+      });
+      if (!campaign || campaign.id !== res.campaign_id) {
+        setCampaign({
+          id: res.campaign_id, product, objective, status: "solo_creative",
+          mode: "solo", research: null, plan: null, cost_usd: 0,
+        });
+      }
+      setCreative({ ...res, skill_used: skill });
+      setPlacement(null);
+      setPublished(null);
+      refreshCost();
+    } catch (e) {
+      setError(String(e.message || e));
+    } finally {
+      setLoading("");
+    }
   };
 
   const startCampaign = async () => {
@@ -254,9 +359,17 @@ export default function App() {
         setCreative(null);
         setPlacement(null);
       }
+      const m = d.mode === "solo" ? "solo" : "chain";
+      if (m !== mode) {
+        setMode(m);
+        try { localStorage.setItem("adp_mode", m); } catch {}
+      }
       const s = d.status;
       setView(
-        s.startsWith("research") ? "research"
+        s === "solo_research" ? "research"
+        : s === "solo_plan" ? "plan"
+        : s === "solo_creative" ? "creative"
+        : s.startsWith("research") ? "research"
         : s.startsWith("plan") && s !== "plan_approved" ? "plan"
         : "creative"
       );
@@ -288,27 +401,29 @@ export default function App() {
       </div>
 
       <div style={{ display: "flex", position: "relative", zIndex: 1, minHeight: "100vh" }}>
-        <Sidebar view={view} setView={setView} idx={idx} cost={cost} calls={calls} campaign={campaign} />
+        <Sidebar view={view} setView={setView} idx={idx} cost={cost} calls={calls} campaign={campaign} mode={mode} />
         <main style={{ flex: 1, overflowY: "auto" }}>
-          <div style={{ maxWidth: 1140, margin: "0 auto", padding: "40px 44px 72px" }}>
-            <TopBar view={view} go={setView} campaign={campaign} product={product} />
+          <div style={{ maxWidth: 1140, margin: "0 auto", padding: "28px 44px 72px" }}>
+            <ModeToggle mode={mode} onSwitch={switchMode} />
+            <TopBar view={view} go={setView} campaign={campaign} product={product} mode={mode} />
             {error && <Banner tone="err">{error}</Banner>}
             {loading && <Banner tone="load">{loading}</Banner>}
 
             {view === "overview" && (
               <Overview
-                {...{ product, setProduct, objective, setObjective, campaign, startCampaign, loading }}
+                {...{ product, setProduct, objective, setObjective, campaign, startCampaign, loading, mode, soloResearch, soloPlan, setView }}
               />
             )}
             {view === "research" && (
-              <Research {...{ campaign, decide, rerunResearch, loading }} />
+              <Research {...{ campaign, decide, rerunResearch, loading, mode, soloResearch, product, setProduct, objective, setObjective }} />
             )}
             {view === "plan" && (
-              <Plan {...{ campaign, decide, runPlan, loading }} />
+              <Plan {...{ campaign, decide, runPlan, loading, mode, soloPlan, product, setProduct, objective, setObjective }} />
             )}
             {view === "creative" && (
               <CreativeStudio
-                {...{ product, campaign, creative, placement, published, genCreative, plan, doPublish, loading, refreshCost }}
+                {...{ product, setProduct, objective, setObjective, campaign, creative, placement, published, plan, doPublish, loading, refreshCost, mode }}
+                genCreative={mode === "solo" ? soloCreative : genCreative}
               />
             )}
             {view === "history" && <History onOpen={openCampaign} />}
@@ -336,7 +451,54 @@ function blob(top, side, sx, bottom, size, color, isBottom) {
 }
 
 /* ---------- shell ---------- */
-function Sidebar({ view, setView, idx, cost, calls, campaign }) {
+/* the chained/solo switch — the one control that changes how the agents run */
+function ModeToggle({ mode, onSwitch }) {
+  const opts = [
+    { k: "chain", icon: "⛓", label: "Chained pipeline" },
+    { k: "solo", icon: "◇", label: "Solo agents" },
+  ];
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 20, flexWrap: "wrap" }}>
+      <div style={{ ...glass, display: "flex", gap: 4, padding: 5, borderRadius: 13 }}>
+        {opts.map((o) => {
+          const active = mode === o.k;
+          return (
+            <button
+              key={o.k}
+              onClick={() => onSwitch(o.k)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                border: "none",
+                cursor: "pointer",
+                padding: "9px 18px",
+                borderRadius: 9,
+                fontFamily: T.sans,
+                fontWeight: 700,
+                fontSize: 13.5,
+                background: active ? T.blue : "transparent",
+                color: active ? "#fff" : T.soft,
+                boxShadow: active ? "0 4px 14px rgba(31,117,254,0.30)" : "none",
+              }}
+            >
+              <span style={{ fontSize: 14 }}>{o.icon}</span>
+              {o.label}
+            </button>
+          );
+        })}
+      </div>
+      <span style={{ fontSize: 12.5, color: T.faint, fontWeight: 500, maxWidth: 520, lineHeight: 1.45 }}>
+        {mode === "chain"
+          ? "Agents hand off 1 → 2 → 3 through human approval gates."
+          : "Each agent runs standalone — no gates, no handoffs. Jump straight to any step (e.g. just generate an ad)."}
+      </span>
+    </div>
+  );
+}
+
+function Sidebar({ view, setView, idx, cost, calls, campaign, mode }) {
+  const solo = mode === "solo";
   const shelf = [
     { key: "library", icon: "▤", label: "Asset Library", sub: "Persistent shelf" },
     { key: "history", icon: "⟲", label: "History", sub: "Past campaigns" },
@@ -385,7 +547,8 @@ function Sidebar({ view, setView, idx, cost, calls, campaign }) {
       <nav style={{ marginTop: 32 }}>
         {FLOW.map((n, i) => {
           const active = view === n.key;
-          const done = i < idx;
+          const done = !solo && i < idx; // "completed step" only means something in the chain
+          const sub = solo ? (SOLO_SUBS[n.key] || n.sub) : n.sub;
           return (
             <button
               key={n.key}
@@ -428,7 +591,7 @@ function Sidebar({ view, setView, idx, cost, calls, campaign }) {
                 <div style={{ fontSize: 14.5, fontWeight: active ? 700 : 500, color: active ? T.blue : T.ink }}>
                   {n.label}
                 </div>
-                <div style={{ fontSize: 11.5, color: T.faint, marginTop: 1 }}>{n.sub}</div>
+                <div style={{ fontSize: 11.5, color: T.faint, marginTop: 1 }}>{sub}</div>
               </span>
             </button>
           );
@@ -510,13 +673,17 @@ function statusChip(status) {
     plan_rejected: { l: "PLAN REJECTED", c: T.red, bg: T.redSoft },
     plan_approved: { l: "PLAN APPROVED", c: T.green, bg: T.greenSoft },
     published: { l: "PUBLISHED", c: "#fff", bg: T.green },
+    solo_research: { l: "SOLO · RESEARCH", c: T.blue, bg: T.blueSoft },
+    solo_plan: { l: "SOLO · PLAN", c: T.blue, bg: T.blueSoft },
+    solo_creative: { l: "SOLO · CREATIVE", c: T.blue, bg: T.blueSoft },
   };
   const m = map[status] || { l: status?.toUpperCase() || "—", c: T.soft, bg: "rgba(11,29,51,0.05)" };
   return <Pill color={m.c} bg={m.bg}>{m.l}</Pill>;
 }
 
-function TopBar({ view, go, campaign, product }) {
+function TopBar({ view, go, campaign, product, mode }) {
   const idx = FLOW.findIndex((f) => f.key === view);
+  const sep = mode === "solo" ? "·" : "→"; // no arrows when nothing hands off
   return (
     <div style={{ display: "flex", alignItems: "center", marginBottom: 32, flexWrap: "wrap", gap: 6 }}>
       {FLOW.map((s, i) => (
@@ -536,7 +703,7 @@ function TopBar({ view, go, campaign, product }) {
           >
             {s.label}
           </button>
-          {i < FLOW.length - 1 && <span style={{ color: T.faint, margin: "0 7px", opacity: 0.5 }}>→</span>}
+          {i < FLOW.length - 1 && <span style={{ color: T.faint, margin: "0 7px", opacity: 0.5 }}>{sep}</span>}
         </div>
       ))}
       <span style={{ marginLeft: "auto", display: "flex", gap: 10, alignItems: "center" }}>
@@ -767,14 +934,47 @@ function Gate({ stage, campaign, decide, rerun, loading, approveLabel }) {
   );
 }
 
+/* ---------- solo run form (product + objective + one run button) ---------- */
+function SoloRunCard({ product, setProduct, objective, setObjective, loading, onRun, label, hint }) {
+  return (
+    <Card style={{ marginBottom: 16 }}>
+      <Label>SOLO RUN · NO GATES, NO HANDOFF</Label>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr auto", gap: 14, marginTop: 12, alignItems: "end" }}>
+        <div>
+          <Label>PRODUCT</Label>
+          <select style={{ ...inputStyle, marginTop: 6 }} value={product} onChange={(e) => setProduct(e.target.value)}>
+            {PRODUCTS.map((p) => (
+              <option key={p}>{p}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <Label>OBJECTIVE / BRIEF</Label>
+          <input style={{ ...inputStyle, marginTop: 6 }} value={objective} onChange={(e) => setObjective(e.target.value)} />
+        </div>
+        <Btn onClick={onRun} disabled={!!loading}>
+          {loading ? "Running…" : label}
+        </Btn>
+      </div>
+      {hint && <p style={{ fontSize: 12.5, color: T.faint, marginTop: 10, marginBottom: 0 }}>{hint}</p>}
+    </Card>
+  );
+}
+
 /* ================= 01 OVERVIEW ================= */
-function Overview({ product, setProduct, objective, setObjective, campaign, startCampaign, loading }) {
+function Overview({ product, setProduct, objective, setObjective, campaign, startCampaign, loading, mode, soloResearch, soloPlan, setView }) {
   const [prompts, setPrompts] = useState(null);
   const [showPrompts, setShowPrompts] = useState(false);
+  const solo = mode === "solo";
   const agents = [
     { n: "AGT-1", name: "Research & Monitor", model: "gemini-3.5-flash", does: "Watches campaigns and diagnoses what's going wrong, what lags, what works. Math runs in code, never the model." },
     { n: "AGT-2", name: "Strategy Planner", model: "gemini-3.5-flash + 2.5 search", does: "Turns approved research into a plan: campaign angle, marketing changes grounded in metrics, next steps." },
     { n: "AGT-3", name: "Creative", model: "gemini-3.5 + gpt-image-2", does: "Executes the approved plan: images (reference-aware), copy, placement, expected metrics — then you publish." },
+  ];
+  const soloActions = [
+    { run: soloResearch, label: "Run research" },
+    { run: soloPlan, label: "Build a plan" },
+    { run: () => setView("creative"), label: "Generate an ad →" },
   ];
   const togglePrompts = async () => {
     if (!prompts) {
@@ -785,14 +985,22 @@ function Overview({ product, setProduct, objective, setObjective, campaign, star
   return (
     <div>
       <PageTitle
-        eyebrow="Step 01 · The handoff chain"
-        title={<>Three agents. <em style={{ color: T.blue }}>Two gates.</em> One publish.</>}
-        sub="Agent 1 researches what's going wrong. You approve — the research hands off to Agent 2, which plans the marketing changes. You approve again — the plan hands off to Agent 3, which generates the creative and gives you an Approve & Publish button with expected metrics."
+        eyebrow={solo ? "Step 01 · Solo agents" : "Step 01 · The handoff chain"}
+        title={
+          solo
+            ? <>Three agents. <em style={{ color: T.blue }}>Use any one,</em> on demand.</>
+            : <>Three agents. <em style={{ color: T.blue }}>Two gates.</em> One publish.</>
+        }
+        sub={
+          solo
+            ? "Standalone mode: no gates, no handoffs. Run Agent 1 for a grounded diagnosis, Agent 2 for a plan straight from the knowledge base, or jump directly to Agent 3 and just generate an ad. Flip the toggle above to go back to the full chained pipeline."
+            : "Agent 1 researches what's going wrong. You approve — the research hands off to Agent 2, which plans the marketing changes. You approve again — the plan hands off to Agent 3, which generates the creative and gives you an Approve & Publish button with expected metrics."
+        }
       />
 
       <Card style={{ marginBottom: 16 }}>
-        <Label>NEW CAMPAIGN</Label>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr auto", gap: 14, marginTop: 12, alignItems: "end" }}>
+        <Label>{solo ? "SOLO RUN · PICK AN AGENT BELOW" : "NEW CAMPAIGN"}</Label>
+        <div style={{ display: "grid", gridTemplateColumns: solo ? "1fr 2fr" : "1fr 2fr auto", gap: 14, marginTop: 12, alignItems: "end" }}>
           <div>
             <Label>PRODUCT</Label>
             <select style={{ ...inputStyle, marginTop: 6 }} value={product} onChange={(e) => setProduct(e.target.value)}>
@@ -802,12 +1010,14 @@ function Overview({ product, setProduct, objective, setObjective, campaign, star
             </select>
           </div>
           <div>
-            <Label>OBJECTIVE</Label>
+            <Label>{solo ? "OBJECTIVE / BRIEF" : "OBJECTIVE"}</Label>
             <input style={{ ...inputStyle, marginTop: 6 }} value={objective} onChange={(e) => setObjective(e.target.value)} />
           </div>
-          <Btn onClick={startCampaign} disabled={!!loading}>
-            {loading ? "Running…" : "Start campaign →"}
-          </Btn>
+          {!solo && (
+            <Btn onClick={startCampaign} disabled={!!loading}>
+              {loading ? "Running…" : "Start campaign →"}
+            </Btn>
+          )}
         </div>
       </Card>
 
@@ -820,9 +1030,17 @@ function Overview({ product, setProduct, objective, setObjective, campaign, star
             </div>
             <h3 style={{ fontFamily: T.serif, fontSize: 25, fontWeight: 400, margin: "12px 0 0" }}>{a.name}</h3>
             <p style={{ fontSize: 13, color: T.soft, lineHeight: 1.6, marginTop: 8 }}>{a.does}</p>
-            <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${T.line}`, fontFamily: T.mono, fontSize: 11, color: T.blue, fontWeight: 600 }}>
-              {i < 2 ? `→ human gate → AGT-${i + 2}` : "→ Approve & Publish"}
-            </div>
+            {solo ? (
+              <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${T.line}` }}>
+                <Btn small onClick={soloActions[i].run} disabled={!!loading}>
+                  {loading ? "Running…" : soloActions[i].label}
+                </Btn>
+              </div>
+            ) : (
+              <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${T.line}`, fontFamily: T.mono, fontSize: 11, color: T.blue, fontWeight: 600 }}>
+                {i < 2 ? `→ human gate → AGT-${i + 2}` : "→ Approve & Publish"}
+              </div>
+            )}
           </Card>
         ))}
       </div>
@@ -855,15 +1073,17 @@ function Overview({ product, setProduct, objective, setObjective, campaign, star
         <Card>
           <Label>KNOWLEDGE BASE</Label>
           <div style={{ fontFamily: T.serif, fontSize: 34, marginTop: 8 }}>
-            9 <span style={{ fontSize: 18, color: T.soft }}>docs</span>
+            12 <span style={{ fontSize: 18, color: T.soft }}>docs</span>
           </div>
           <p style={{ fontSize: 13, color: T.soft, lineHeight: 1.65, marginTop: 8 }}>
-            Sales data, channel metrics, distributor notes, brand guidelines. Agents answer only from
-            here — <strong style={{ color: T.ink }}>no citation, no claim.</strong>
+            Real public data (FY2024 Hill's financials, 2025 Meta/Amazon ad benchmarks, India
+            quick-commerce) layered on internal demo data — each doc states its provenance.
+            Agents answer only from here — <strong style={{ color: T.ink }}>no citation, no claim.</strong>
           </p>
           <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 12 }}>
             <Cite src="hills_regional_sales.md" />
-            <Cite src="channel_metrics.md" />
+            <Cite src="industry_ad_benchmarks.md" />
+            <Cite src="quick_commerce_india.md" />
           </div>
         </Card>
       </div>
@@ -872,11 +1092,27 @@ function Overview({ product, setProduct, objective, setObjective, campaign, star
 }
 
 /* ================= 02 RESEARCH (Agent 1) ================= */
-function Research({ campaign, decide, rerunResearch, loading }) {
+function Research({ campaign, decide, rerunResearch, loading, mode, soloResearch, product, setProduct, objective, setObjective }) {
+  if (mode === "solo") {
+    return (
+      <div>
+        <PageTitle
+          eyebrow="Solo · Agent 1 — Research & Monitor"
+          title="What's going wrong"
+          sub="Standalone run — no gates, no handoff. Same deterministic campaign math and grounded, cited diagnosis; use it whenever you just need a portfolio read."
+        />
+        <SoloRunCard
+          {...{ product, setProduct, objective, setObjective, loading }}
+          onRun={soloResearch}
+          label="Run Agent 1 →"
+        />
+        {campaign?.research
+          ? <ResearchBody r={campaign.research} />
+          : <Empty label="Run Agent 1 above to generate a standalone research report." />}
+      </div>
+    );
+  }
   if (!campaign?.research) return <Empty label="Start a campaign first (step 01)." />;
-  const r = campaign.research;
-  const sev = { high: T.red, medium: T.amber, low: T.soft };
-  const sevBg = { high: T.redSoft, medium: T.amberSoft, low: "rgba(11,29,51,0.05)" };
   const approved = ["research_approved", "plan_pending", "plan_rejected", "plan_approved", "published"].includes(campaign.status);
   return (
     <div>
@@ -892,6 +1128,26 @@ function Research({ campaign, decide, rerunResearch, loading }) {
         <Banner tone="load">♻ This run consumed prior feedback: "{campaign.used_feedback}"</Banner>
       )}
 
+      <ResearchBody r={campaign.research} />
+
+      <Gate
+        stage="research"
+        campaign={campaign}
+        decide={decide}
+        rerun={rerunResearch}
+        loading={loading}
+        approveLabel="Approve — hand research to Agent 2 →"
+      />
+    </div>
+  );
+}
+
+/* the report itself — shared by the chained view and the solo view */
+function ResearchBody({ r }) {
+  const sev = { high: T.red, medium: T.amber, low: T.soft };
+  const sevBg = { high: T.redSoft, medium: T.amberSoft, low: "rgba(11,29,51,0.05)" };
+  return (
+    <div>
       <Card>
         <Label>SUMMARY</Label>
         <p style={{ fontFamily: T.serif, fontSize: 24, lineHeight: 1.4, marginTop: 10 }}>{r.summary}</p>
@@ -960,21 +1216,35 @@ function Research({ campaign, decide, rerunResearch, loading }) {
           {r.scale_recommendation}
         </p>
       </Card>
-
-      <Gate
-        stage="research"
-        campaign={campaign}
-        decide={decide}
-        rerun={rerunResearch}
-        loading={loading}
-        approveLabel="Approve — hand research to Agent 2 →"
-      />
     </div>
   );
 }
 
 /* ================= 03 PLAN (Agent 2) ================= */
-function Plan({ campaign, decide, runPlan, loading }) {
+function Plan({ campaign, decide, runPlan, loading, mode, soloPlan, product, setProduct, objective, setObjective }) {
+  if (mode === "solo") {
+    const hasResearch = !!campaign?.research;
+    return (
+      <div>
+        <PageTitle
+          eyebrow="Solo · Agent 2 — Strategy Planner"
+          title="The plan"
+          sub={hasResearch
+            ? "Standalone run — this session's solo research is picked up as optional context, but no approval gate stands in the way."
+            : "Standalone run — no research report required. Agent 2 plans straight from the knowledge base (campaign history, channel metrics, brand guidelines)."}
+        />
+        <SoloRunCard
+          {...{ product, setProduct, objective, setObjective, loading }}
+          onRun={soloPlan}
+          label="Run Agent 2 →"
+          hint={hasResearch ? "Reusing this session's solo research as context. Edit the product/objective to plan from scratch instead." : undefined}
+        />
+        {campaign?.plan
+          ? <PlanBody p={campaign.plan} />
+          : <Empty label="Run Agent 2 above to generate a standalone plan." />}
+      </div>
+    );
+  }
   if (!campaign?.research) return <Empty label="Start a campaign first (step 01)." />;
   if (!campaign?.plan) {
     const ready = campaign.status === "research_approved";
@@ -993,7 +1263,6 @@ function Plan({ campaign, decide, runPlan, loading }) {
       </div>
     );
   }
-  const p = campaign.plan;
   const approved = ["plan_approved", "published"].includes(campaign.status);
   return (
     <div>
@@ -1008,6 +1277,24 @@ function Plan({ campaign, decide, runPlan, loading }) {
         <Banner tone="load">♻ This plan consumed prior feedback: "{campaign.used_feedback}"</Banner>
       )}
 
+      <PlanBody p={campaign.plan} />
+
+      <Gate
+        stage="plan"
+        campaign={campaign}
+        decide={decide}
+        rerun={runPlan}
+        loading={loading}
+        approveLabel="Approve — hand plan to Agent 3 →"
+      />
+    </div>
+  );
+}
+
+/* the plan itself — shared by the chained view and the solo view */
+function PlanBody({ p }) {
+  return (
+    <div>
       <Card style={{ padding: 32 }}>
         <Label>CAMPAIGN ANGLE · AGENT 3'S CREATIVE DIRECTION</Label>
         <h2 style={{ fontFamily: T.serif, fontSize: 36, fontWeight: 400, fontStyle: "italic", margin: "12px 0 0", lineHeight: 1.15 }}>
@@ -1052,30 +1339,25 @@ function Plan({ campaign, decide, runPlan, loading }) {
           ))}
         </ol>
       </Card>
-
-      <Gate
-        stage="plan"
-        campaign={campaign}
-        decide={decide}
-        rerun={runPlan}
-        loading={loading}
-        approveLabel="Approve — hand plan to Agent 3 →"
-      />
     </div>
   );
 }
 
 /* ================= 04 CREATIVE STUDIO (Agent 3) ================= */
-function CreativeStudio({ product, campaign, creative, placement, published, genCreative, plan, doPublish, loading, refreshCost }) {
+function CreativeStudio({ product, setProduct, objective, setObjective, campaign, creative, placement, published, genCreative, plan, doPublish, loading, refreshCost, mode }) {
   const [skill, setSkill] = useState("/amazon");
   const [url, setUrl] = useState(DEFAULT_URL[campaign?.product || product] || "");
   const [tweak, setTweak] = useState("");
   const [ref, setRef] = useState(null); // {reference_id, url}
   const [uploading, setUploading] = useState(false);
+  const solo = mode === "solo";
 
-  if (!campaign) return <Empty label="Start a campaign first (step 01)." />;
-  if (!["plan_approved", "published"].includes(campaign.status) && !creative)
-    return <Empty label="Approve Agent 2's plan first (step 03)." />;
+  // chain mode is gated on an approved plan; solo mode is always open
+  if (!solo) {
+    if (!campaign) return <Empty label="Start a campaign first (step 01)." />;
+    if (!["plan_approved", "published"].includes(campaign.status) && !creative)
+      return <Empty label="Approve Agent 2's plan first (step 03)." />;
+  }
 
   const onRef = async (e) => {
     const f = e.target.files?.[0];
@@ -1094,22 +1376,64 @@ function CreativeStudio({ product, campaign, creative, placement, published, gen
   return (
     <div>
       <PageTitle
-        eyebrow="Step 04 · Agent 3 — Creative"
+        eyebrow={solo ? "Solo · Agent 3 — Creative" : "Step 04 · Agent 3 — Creative"}
         title="Creative studio"
-        sub="The approved plan is the brief. Optionally upload a reference image (faithful product renders) and add art direction — every image prompt stays editable after generation."
+        sub={solo
+          ? "Standalone run — no approved plan required: your objective is the brief. Pick a skill, point at a product URL, and just generate the ad. Reference images and art direction still work."
+          : "The approved plan is the brief. Optionally upload a reference image (faithful product renders) and add art direction — every image prompt stays editable after generation."}
       />
 
       {published && <Stamp label="PUBLISHED" good />}
 
       <Card>
         <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
-          <Pill color={T.green} bg={T.greenSoft}>PLAN APPROVED ✓</Pill>
-          {campaign.plan && (
-            <span style={{ fontFamily: T.serif, fontSize: 15, fontStyle: "italic", color: T.body }}>
-              "{campaign.plan.campaign_angle}"
-            </span>
+          {solo ? (
+            <>
+              <Pill color={T.blue} bg={T.blueSoft}>SOLO MODE · NO PLAN REQUIRED</Pill>
+              {campaign?.plan ? (
+                <span style={{ fontFamily: T.serif, fontSize: 15, fontStyle: "italic", color: T.body }}>
+                  "{campaign.plan.campaign_angle}" — from this session's solo plan
+                </span>
+              ) : (
+                <span style={{ fontSize: 13, color: T.soft, fontWeight: 500 }}>
+                  Brief: {objective}
+                </span>
+              )}
+            </>
+          ) : (
+            <>
+              <Pill color={T.green} bg={T.greenSoft}>PLAN APPROVED ✓</Pill>
+              {campaign.plan && (
+                <span style={{ fontFamily: T.serif, fontSize: 15, fontStyle: "italic", color: T.body }}>
+                  "{campaign.plan.campaign_angle}"
+                </span>
+              )}
+            </>
           )}
         </div>
+        {solo && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 12, marginTop: 14 }}>
+            <div>
+              <Label>PRODUCT</Label>
+              <select
+                style={{ ...inputStyle, marginTop: 6 }}
+                value={product}
+                onChange={(e) => {
+                  setProduct(e.target.value);
+                  setUrl(DEFAULT_URL[e.target.value] || "");
+                }}
+              >
+                {PRODUCTS.map((pr) => (
+                  <option key={pr}>{pr}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <Label>OBJECTIVE / BRIEF (USED AS THE CREATIVE BRIEF)</Label>
+              <input style={{ ...inputStyle, marginTop: 6 }} value={objective} onChange={(e) => setObjective(e.target.value)} />
+            </div>
+          </div>
+        )}
         <div style={{ display: "flex", gap: 12, alignItems: "center", marginTop: 14, flexWrap: "wrap" }}>
           <span style={{ fontFamily: T.mono, fontSize: 14, color: T.blue, fontWeight: 600 }}>{skill}</span>
           <input
@@ -1209,7 +1533,7 @@ function CreativeStudio({ product, campaign, creative, placement, published, gen
                   No disease-cure claims · no "reverses aging" · no implied vet endorsement without substantiation.
                 </p>
                 <div style={{ marginTop: 8 }}>
-                  <Cite src={(campaign.product || product).includes("Palmolive") ? "brand_guidelines_palmolive.md" : "brand_guidelines_hills.md"} />
+                  <Cite src={(campaign?.product || product).includes("Palmolive") ? "brand_guidelines_palmolive.md" : "brand_guidelines_hills.md"} />
                 </div>
               </Card>
             </div>

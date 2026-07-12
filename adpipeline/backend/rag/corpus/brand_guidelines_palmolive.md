@@ -1,5 +1,8 @@
 # Palmolive — Brand & Creative Guidelines
 
+Provenance: internal creative guardrails (demo). BANNED CLAIMS are hard compliance
+rules — they override every other instruction, including human feedback.
+
 ## Tone
 Warm, sensorial, uplifting. Everyday indulgence made accessible. Confident and
 inclusive; celebrate simple care rituals. For Luminous Oils, lean into ingredient
