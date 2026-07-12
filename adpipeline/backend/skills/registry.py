@@ -72,7 +72,7 @@ SKILLS = {
     },
     "/bundle": {
         "command": "/bundle",
-        "description": "Everything above + a 6-frame VIDEO STORYBOARD (stills + shot notes + Veo prompt). Storyboard only — no video API calls.",
+        "description": "Everything above + a 6-frame VIDEO STORYBOARD (stills + shot notes + video prompt). Video renders only on an explicit Seedance call — never inside this skill.",
         "image_specs": [
             {"kind": "packshot", "aspect": "1:1", "n": 1,
              "prompt_template": _BASE_STYLE + " Studio white background hero packshot."},
@@ -83,8 +83,9 @@ SKILLS = {
         ],
         "copy_blocks": ["primary_text", "headline", "storyboard_6_frames", "veo_prompt"],
         "platform_rules": [
-            "Storyboard is 6 stills + shot descriptions + one ready-to-run Veo prompt.",
-            "Do NOT call any video API — storyboard only (cost control).",
+            "Storyboard is 6 stills + shot descriptions + one ready-to-run text-to-video prompt (veo_prompt).",
+            "veo_prompt must describe ONE continuous 5-second shot (Seedance renders it on explicit user request only).",
+            "Do NOT call any video API from this skill — storyboard + prompt only (cost control).",
         ],
     },
 }

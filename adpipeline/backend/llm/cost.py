@@ -4,8 +4,8 @@ import contextvars
 from config import COST_TABLE, IMAGE_COST
 from models import LLMCall, SessionLocal
 
-# current run id, set by orchestrator so calls attribute correctly
-current_run_id = contextvars.ContextVar("current_run_id", default=None)
+# current campaign id, set by orchestrator so calls attribute correctly
+current_campaign_id = contextvars.ContextVar("current_campaign_id", default=None)
 
 
 def estimate_cost(model: str, tokens_in: int, tokens_out: int) -> float:
@@ -19,7 +19,7 @@ def log_call(model, task, tokens_in=0, tokens_out=0, latency_ms=0, cost_usd=None
     db = SessionLocal()
     try:
         db.add(LLMCall(
-            run_id=current_run_id.get(),
+            campaign_id=current_campaign_id.get(),
             model=model, task=task,
             tokens_in=tokens_in, tokens_out=tokens_out,
             latency_ms=latency_ms, cost_usd=cost_usd,

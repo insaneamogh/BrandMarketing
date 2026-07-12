@@ -6,7 +6,7 @@ from typing import List, Optional
 
 from openai import OpenAI
 
-from config import MODEL_EMBED, MODEL_IMAGE, OPENAI_API_KEY
+from config import MODEL_EMBED_OPENAI, MODEL_IMAGE, OPENAI_API_KEY
 from llm import cost
 
 _client: Optional[OpenAI] = None
@@ -76,26 +76,39 @@ def vision_json(model: str, system: str, user: str, image_urls: List[str],
 
 
 def embed(texts: List[str]) -> List[List[float]]:
-    resp = client().embeddings.create(model=MODEL_EMBED, input=texts)
+    resp = client().embeddings.create(model=MODEL_EMBED_OPENAI, input=texts)
     tokens = resp.usage.total_tokens if resp.usage else 0
-    cost.log_call(MODEL_EMBED, "embed", tokens_in=tokens)
+    cost.log_call(MODEL_EMBED_OPENAI, "embed", tokens_in=tokens)
     return [d.embedding for d in resp.data]
 
 
 def generate_image(prompt: str, aspect: str = "1:1", quality: str = "medium",
-                   task: str = "image") -> bytes:
+                   task: str = "image", reference_png: bytes = None) -> bytes:
     """Image gen. Returns PNG bytes. Raises on failure (caller handles cache).
 
+    reference_png: optional user-uploaded reference — routed through
+    images.edit so the generation stays faithful to the real product.
     Cost is logged at the requested quality tier; a repeat prompt never reaches
     here (the caller's prompt-hash cache short-circuits it at $0).
     """
+    import io
     from config import tier_cost
-    size = {"1:1": "1024x1024", "4:5": "1024x1280",
+    # gpt-image-1 accepts ONLY these sizes; 4:5 renders on the portrait canvas.
+    size = {"1:1": "1024x1024", "4:5": "1024x1536",
             "9:16": "1024x1536", "16:9": "1536x1024"}.get(aspect, "1024x1024")
-    resp = client().images.generate(
-        model=MODEL_IMAGE, prompt=prompt, size=size, n=1, quality=quality,
-    )
-    cost.log_image(MODEL_IMAGE, f"{task}:{quality}", cost_usd=tier_cost(quality))
+    if reference_png:
+        ref = io.BytesIO(reference_png)
+        ref.name = "reference.png"
+        resp = client().images.edit(
+            model=MODEL_IMAGE, image=ref, prompt=prompt, size=size, n=1,
+            quality=quality,
+        )
+    else:
+        resp = client().images.generate(
+            model=MODEL_IMAGE, prompt=prompt, size=size, n=1, quality=quality,
+        )
+    cost.log_image(MODEL_IMAGE, f"{task}:{quality}",
+                   cost_usd=tier_cost(quality, aspect))
     return base64.b64decode(resp.data[0].b64_json)
 
 

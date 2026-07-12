@@ -1,167 +1,248 @@
-"""Orchestrator: run_screening / run_creative / run_placement + brief merge + cost.
+"""Orchestrator for the staged handoff pipeline. Plain async Python, no graph
+framework — the state machine is the Campaign.status column:
 
-Plain async Python, no graph framework. Analysts run, their outputs merge into a
-Brief(status=pending); rejection feedback is pulled from the Feedback table and
-injected into the next run's analyst prompts, closing the loop.
+  POST /campaigns          -> Agent 1 (research)      -> research_pending
+  decision approve         -> hand research to Agent 2 -> research_approved
+  POST .../plan            -> Agent 2 (plan)          -> plan_pending
+  decision approve         -> hand plan to Agent 3    -> plan_approved
+  POST .../creative        -> Agent 3 (copy+images)   -> (creative rows)
+  POST /placement          -> placements + expected metrics w/ probability
+  POST .../publish         -> published
+
+A rejected stage stores feedback (per campaign+stage) that is injected into
+that stage's re-run prompt and only marked consumed after a SUCCESSFUL re-run.
 """
 import asyncio
+import hashlib
 import json
+from pathlib import Path
 
 from sqlalchemy import func
 
 from agents import creative as creative_agent
-from agents import monitor, sales_analyst, strategist
-from llm import cost, openai_client
-from llm.router import pick_model
+from agents import planner, researcher
+from config import ASSETS_DIR, SEEDANCE_COST_PER_VIDEO
+from llm import cost, video_client
 from models import (
-    Asset, Brief, Creative, Feedback, LLMCall, Run, SessionLocal,
+    Asset, Campaign, Creative, Feedback, LLMCall, SessionLocal, StageDecision,
 )
 from schemas import (
-    AssetOut, BriefBody, BriefResponse, CreativeResponse, MonitorOutput,
-    PlacementResponse, ProductProfile, RunResponse, SalesOutput, StrategistOutput,
+    AssetOut, CampaignResponse, CreativeResponse, PlanOutput, ProductProfile,
+    ResearchOutput,
 )
 import url_diagnosis
 
+REF_DIR = ASSETS_DIR / "references"          # uploaded reference images
+REF_DIR.mkdir(parents=True, exist_ok=True)
 
-# ---------------- screening ----------------
-def _pending_feedback(db, product: str) -> str:
+_STAGES = ("research", "plan")
+
+
+# ---------------- feedback (per campaign + stage) ----------------
+def _pending_feedback(db, campaign_id: int, stage: str):
+    """Unconsumed rejection feedback rows for this stage. Marked consumed only
+    AFTER a successful re-run, so a failed run never eats the human's feedback."""
     rows = (db.query(Feedback)
-            .filter(Feedback.product == product, Feedback.consumed == 0)
+            .filter(Feedback.campaign_id == campaign_id,
+                    Feedback.stage == stage, Feedback.consumed == 0)
             .all())
-    if not rows:
-        return ""
-    text = " | ".join(r.text for r in rows)
-    for r in rows:
-        r.consumed = 1
-    db.commit()
-    return text
+    return rows, " | ".join(r.text for r in rows)
 
 
-async def run_screening(product: str, objective: str) -> dict:
+# ---------------- campaign envelope ----------------
+def _campaign_response(db, c: Campaign, used_feedback: str = None) -> dict:
+    return CampaignResponse(
+        id=c.id, product=c.product, objective=c.objective, status=c.status,
+        research=(ResearchOutput.model_validate_json(c.research_json)
+                  if c.research_json else None),
+        plan=(PlanOutput.model_validate_json(c.plan_json)
+              if c.plan_json else None),
+        used_feedback=used_feedback or None,
+        cost_usd=_campaign_cost(db, c.id),
+    ).model_dump()
+
+
+# ---------------- stage 1: research (Agent 1) ----------------
+async def start_campaign(product: str, objective: str) -> dict:
     db = SessionLocal()
-    run = Run(product=product, objective=objective, status="running")
-    db.add(run)
-    db.commit()
-    db.refresh(run)
-    token = cost.current_run_id.set(run.id)
     try:
-        feedback = _pending_feedback(db, product)
-
-        # analysts run concurrently (each wraps a blocking OpenAI call in a thread)
-        strat_t = asyncio.to_thread(strategist.run, product, objective, feedback)
-        sales_t = asyncio.to_thread(sales_analyst.run, product, objective, feedback)
-        mon_t = asyncio.to_thread(monitor.run, product, objective, feedback)
-        (strat, _), (sales, _), (mon, _) = await asyncio.gather(strat_t, sales_t, mon_t)
-
-        run.strategist_json = strat.model_dump_json()
-        run.sales_json = sales.model_dump_json()
-        run.monitor_json = mon.model_dump_json()
-
-        summary = _executive_summary(product, objective, strat, sales, mon)
-        body = BriefBody(strategist=strat, sales=sales, monitor=mon)
-        brief = Brief(run_id=run.id, status="pending",
-                      executive_summary=summary, body_json=body.model_dump_json())
-        db.add(brief)
-        run.status = "complete"
+        c = Campaign(product=product, objective=objective, status="research_pending")
+        db.add(c)
         db.commit()
-        db.refresh(brief)
-
-        brief_resp = BriefResponse(
-            id=brief.id, run_id=run.id, status="pending",
-            executive_summary=summary, body=body)
-        return RunResponse(
-            run_id=run.id, product=product, objective=objective,
-            strategist=strat, sales=sales, monitor=mon, brief=brief_resp,
-            used_feedback=feedback or None,
-            cost_usd=_run_cost(db, run.id),
-        ).model_dump()
-    except Exception:
-        run.status = "error"
-        db.commit()
-        raise
+        db.refresh(c)
+        return await _run_research(db, c)
     finally:
-        cost.current_run_id.reset(token)
         db.close()
 
 
-def _executive_summary(product, objective, strat: StrategistOutput,
-                       sales: SalesOutput, mon: MonitorOutput) -> str:
-    system = ("You are a marketing chief of staff. Merge the three analyst outputs into "
-              "a crisp 4-sentence executive summary for a human approver. No fluff. "
-              "Return JSON {\"summary\": str}.")
-    user = (
-        f"PRODUCT: {product}\nOBJECTIVE: {objective}\n"
-        f"STRATEGIST: {strat.model_dump_json()}\n"
-        f"SALES: {sales.model_dump_json()}\n"
-        f"MONITOR: {mon.model_dump_json()}\n"
-        "Write exactly 4 sentences covering: top angle, where to sell/scale, biggest "
-        "risk, and the recommended next action."
-    )
-    data = openai_client.chat_json(pick_model("brief"), system, user, "brief_summary", 0.4)
-    return data.get("summary", "")
-
-
-# ---------------- creative ----------------
-async def run_creative(brief_id: int, url: str, skill: str) -> dict:
+async def rerun_research(campaign_id: int) -> dict:
     db = SessionLocal()
     try:
-        brief = db.get(Brief, brief_id)
-        if not brief:
-            raise ValueError("brief not found")
-        if brief.status != "approved":
-            raise ValueError("brief must be approved before creative")
-        run = brief.run
-        token = cost.current_run_id.set(run.id)
+        c = db.get(Campaign, campaign_id)
+        if not c:
+            raise ValueError("campaign not found")
+        if c.status == "published":
+            raise ValueError("campaign already published")
+        return await _run_research(db, c)
+    finally:
+        db.close()
+
+
+async def _run_research(db, c: Campaign) -> dict:
+    token = cost.current_campaign_id.set(c.id)
+    try:
+        fb_rows, feedback = _pending_feedback(db, c.id, "research")
+        research, _ = await asyncio.to_thread(
+            researcher.run, c.product, c.objective, feedback)
+        c.research_json = research.model_dump_json()
+        c.plan_json = None                       # stale plan dies with new research
+        c.status = "research_pending"
+        for r in fb_rows:
+            r.consumed = 1
+        db.commit()
+        return _campaign_response(db, c, feedback)
+    finally:
+        cost.current_campaign_id.reset(token)
+
+
+# ---------------- stage 2: plan (Agent 2) ----------------
+async def run_plan(campaign_id: int) -> dict:
+    db = SessionLocal()
+    try:
+        c = db.get(Campaign, campaign_id)
+        if not c:
+            raise ValueError("campaign not found")
+        if not c.research_json:
+            raise ValueError("no research to plan from")
+        if c.status not in ("research_approved", "plan_pending", "plan_rejected"):
+            raise ValueError(
+                f"plan requires approved research (campaign is {c.status})")
+        token = cost.current_campaign_id.set(c.id)
+        try:
+            fb_rows, feedback = _pending_feedback(db, c.id, "plan")
+            plan, _ = await asyncio.to_thread(
+                planner.run, c.product, c.objective, c.research_json, feedback)
+            c.plan_json = plan.model_dump_json()
+            c.status = "plan_pending"
+            for r in fb_rows:
+                r.consumed = 1
+            db.commit()
+            return _campaign_response(db, c, feedback)
+        finally:
+            cost.current_campaign_id.reset(token)
+    finally:
+        db.close()
+
+
+# ---------------- human gates ----------------
+def decide(campaign_id: int, stage: str, action: str, feedback: str = None) -> dict:
+    if stage not in _STAGES:
+        raise ValueError(f"stage must be one of {_STAGES}")
+    if action not in ("approve", "reject"):
+        raise ValueError("action must be approve|reject")
+    db = SessionLocal()
+    try:
+        c = db.get(Campaign, campaign_id)
+        if not c:
+            raise ValueError("campaign not found")
+        if stage == "research" and not c.research_json:
+            raise ValueError("nothing to decide: research has not run")
+        if stage == "plan" and not c.plan_json:
+            raise ValueError("nothing to decide: plan has not run")
+        if action == "reject" and not (feedback or "").strip():
+            raise ValueError("reject requires feedback")
+
+        db.add(StageDecision(campaign_id=campaign_id, stage=stage,
+                             action=action, feedback=feedback))
+        if action == "approve":
+            c.status = f"{stage}_approved"
+        else:
+            c.status = f"{stage}_rejected"
+            db.add(Feedback(campaign_id=campaign_id, stage=stage, text=feedback))
+        db.commit()
+        return {"campaign_id": campaign_id, "stage": stage, "status": c.status}
+    finally:
+        db.close()
+
+
+# ---------------- stage 3: creative (Agent 3) ----------------
+async def run_creative(campaign_id: int, url: str, skill: str,
+                       reference_id: str = None, prompt_tweak: str = None) -> dict:
+    db = SessionLocal()
+    try:
+        c = db.get(Campaign, campaign_id)
+        if not c:
+            raise ValueError("campaign not found")
+        if c.status not in ("plan_approved", "published"):
+            raise ValueError(
+                f"creative requires an approved plan (campaign is {c.status})")
+        plan = PlanOutput.model_validate_json(c.plan_json)
+
+        reference_png, reference_path = None, None
+        if reference_id:
+            reference_path = str(REF_DIR / reference_id)
+            p = Path(reference_path)
+            if not p.exists():
+                raise ValueError("reference image not found — upload it first")
+            reference_png = p.read_bytes()
+
+        token = cost.current_campaign_id.set(c.id)
         try:
             skill_def = _get_skill(skill)
             profile = await asyncio.to_thread(url_diagnosis.diagnose, url)
 
-            body = json.loads(brief.body_json)
-            approved_angle = (body.get("strategist", {})
-                              .get("strategies", [{}])[0].get("angle", ""))
-
             copy_blocks = await asyncio.to_thread(
                 creative_agent.generate_copy, profile, skill_def,
-                brief.executive_summary, approved_angle)
+                plan.plan_summary, plan.campaign_angle)
 
-            creative = Creative(brief_id=brief_id, url=url, skill=skill,
-                                profile_json=profile.model_dump_json(),
-                                copy_json=json.dumps(copy_blocks))
+            creative = Creative(
+                campaign_id=c.id, url=url, skill=skill,
+                reference_path=reference_path, prompt_tweak=prompt_tweak,
+                profile_json=profile.model_dump_json(),
+                copy_json=json.dumps(copy_blocks))
             db.add(creative)
             db.commit()
             db.refresh(creative)
 
             brand = _brand_key(profile)
             asset_rows = await asyncio.to_thread(
-                creative_agent.generate_assets, profile, skill_def, creative.id,
-                _cache_lookup)
+                creative_agent.generate_assets, profile, skill_def,
+                _cache_lookup, reference_png, prompt_tweak or "")
 
             assets_out = []
             for a in asset_rows:
                 rec = Asset(
-                    creative_id=creative.id, run_id=run.id, brand=brand, skill=skill,
-                    kind=a["kind"], prompt=a["prompt"], prompt_hash=a["prompt_hash"],
-                    aspect=a["aspect"], quality=a["quality"], path=a["path"],
+                    creative_id=creative.id, campaign_id=c.id, brand=brand,
+                    skill=skill, kind=a["kind"], prompt=a["prompt"],
+                    prompt_hash=a["prompt_hash"], aspect=a["aspect"],
+                    quality=a["quality"], path=a["path"],
                     from_cache=1 if a["from_cache"] else 0,
                     cache_hit=1 if a["cache_hit"] else 0,
                     origin=a["origin"], cost_usd=a["cost_usd"])
                 db.add(rec)
                 db.commit()
                 db.refresh(rec)
-                assets_out.append(AssetOut(
-                    id=rec.id, kind=rec.kind, prompt=rec.prompt, aspect=rec.aspect,
-                    url=f"/assets/{rec.id}", from_cache=bool(rec.from_cache)))
+                assets_out.append(_asset_out(rec))
 
             return CreativeResponse(
-                creative_id=creative.id, profile=profile, assets=assets_out,
-                copy_blocks=copy_blocks, cost_usd=_run_cost(db, run.id)).model_dump()
+                creative_id=creative.id, campaign_id=c.id, profile=profile,
+                assets=assets_out, copy_blocks=copy_blocks,
+                reference_used=bool(reference_png), prompt_tweak=prompt_tweak,
+                cost_usd=_campaign_cost(db, c.id)).model_dump()
         finally:
-            cost.current_run_id.reset(token)
+            cost.current_campaign_id.reset(token)
     finally:
         db.close()
 
 
-# ---------------- placement ----------------
+def _asset_out(rec: Asset) -> AssetOut:
+    return AssetOut(
+        id=rec.id, kind=rec.kind, prompt=rec.prompt, aspect=rec.aspect,
+        url=f"/assets/{rec.id}", from_cache=bool(rec.from_cache),
+        cache_hit=bool(rec.cache_hit), cost_usd=round(rec.cost_usd or 0.0, 3))
+
+
+# ---------------- placement + expected metrics ----------------
 async def run_placement(creative_id: int) -> dict:
     db = SessionLocal()
     try:
@@ -169,16 +250,207 @@ async def run_placement(creative_id: int) -> dict:
         if not creative:
             raise ValueError("creative not found")
         profile = ProductProfile.model_validate_json(creative.profile_json)
+        plan = PlanOutput.model_validate_json(creative.campaign.plan_json)
         kinds = [a.kind for a in creative.assets]
-        token = cost.current_run_id.set(creative.brief.run_id)
+        token = cost.current_campaign_id.set(creative.campaign_id)
         try:
-            plan = await asyncio.to_thread(creative_agent.placement, kinds, profile)
+            resp = await asyncio.to_thread(
+                creative_agent.placement, kinds, profile, plan.campaign_angle)
         finally:
-            cost.current_run_id.reset(token)
-        plan.creative_id = creative_id
-        creative.placement_json = plan.model_dump_json()
+            cost.current_campaign_id.reset(token)
+        resp.creative_id = creative_id
+        creative.placement_json = resp.model_dump_json()
         db.commit()
-        return plan.model_dump()
+        return resp.model_dump()
+    finally:
+        db.close()
+
+
+# ---------------- publish ----------------
+def publish(creative_id: int) -> dict:
+    """Approve & Publish. POC: records the publish decision + payload (in
+    production this is where the Meta/Amazon Ads API call goes)."""
+    import datetime as dt
+    db = SessionLocal()
+    try:
+        creative = db.get(Creative, creative_id)
+        if not creative:
+            raise ValueError("creative not found")
+        if not creative.assets:
+            raise ValueError("nothing to publish: generate assets first")
+        creative.published = 1
+        creative.published_at = dt.datetime.utcnow()
+        creative.campaign.status = "published"
+        db.add(StageDecision(campaign_id=creative.campaign_id, stage="publish",
+                             action="publish", feedback=None))
+        placement = json.loads(creative.placement_json or "{}")
+        db.commit()
+        return {
+            "creative_id": creative_id,
+            "campaign_id": creative.campaign_id,
+            "status": "published",
+            "published_at": creative.published_at.isoformat() + "Z",
+            "assets": len(creative.assets),
+            "channels": sorted({p["platform"] for p in placement.get("placements", [])}),
+            "note": "POC publish — recorded in DB; wire the ad-platform API here in production.",
+        }
+    finally:
+        db.close()
+
+
+# ---------------- video (Seedance, optional + explicit) ----------------
+async def run_video(creative_id: int) -> dict:
+    """Generate ONE short ad video for a creative from its veo/storyboard prompt.
+
+    Never called automatically by a skill run. If SEEDANCE_API_KEY is missing,
+    returns status=disabled with the ready-to-run prompt so the demo still has
+    a video story. A finished video is cached on the Creative row — repeat
+    clicks cost $0.
+    """
+    db = SessionLocal()
+    try:
+        creative = db.get(Creative, creative_id)
+        if not creative:
+            raise ValueError("creative not found")
+        if creative.video_json:                      # already generated — cached
+            prior = json.loads(creative.video_json)
+            if prior.get("status") == "done":
+                return {**prior, "cached": True}
+
+        copy = json.loads(creative.copy_json or "{}")
+        prompt = copy.get("veo_prompt") or copy.get("video_prompt")
+        if isinstance(prompt, list):
+            prompt = " ".join(str(p) for p in prompt)
+        if not prompt:
+            profile = ProductProfile.model_validate_json(creative.profile_json)
+            frames = copy.get("storyboard_6_frames", [])
+            frames = " ".join(str(f) for f in frames) if isinstance(frames, list) else str(frames)
+            prompt = (f"Cinematic 5-second product commercial for {profile.name} "
+                      f"({profile.category}). {frames}".strip())
+
+        if not video_client.enabled():
+            result = {"status": "disabled", "prompt": prompt,
+                      "note": "Set SEEDANCE_API_KEY to render this prompt as video."}
+            creative.video_json = json.dumps(result)
+            db.commit()
+            return result
+
+        token = cost.current_campaign_id.set(creative.campaign_id)
+        try:
+            mp4 = await asyncio.to_thread(
+                video_client.generate_video, prompt, "16:9", "video:bundle")
+        except Exception as e:
+            result = {"status": "error", "prompt": prompt, "error": str(e)}
+            creative.video_json = json.dumps(result)
+            db.commit()
+            return result
+        finally:
+            cost.current_campaign_id.reset(token)
+
+        path = ASSETS_DIR / f"video_{creative_id}.mp4"
+        path.write_bytes(mp4)
+        result = {"status": "done", "url": f"/videos/{creative_id}",
+                  "prompt": prompt, "cost_usd": SEEDANCE_COST_PER_VIDEO}
+        creative.video_json = json.dumps(result)
+        db.commit()
+        return result
+    finally:
+        db.close()
+
+
+def video_path(creative_id: int) -> str:
+    db = SessionLocal()
+    try:
+        creative = db.get(Creative, creative_id)
+        if not creative or not creative.video_json:
+            raise ValueError("video not found")
+        if json.loads(creative.video_json).get("status") != "done":
+            raise ValueError("video not generated")
+        return str(ASSETS_DIR / f"video_{creative_id}.mp4")
+    finally:
+        db.close()
+
+
+# ---------------- reference images ----------------
+def save_reference(data: bytes, filename: str = "") -> dict:
+    """Persist an uploaded reference image; returns the token used by /creative."""
+    if not data:
+        raise ValueError("empty upload")
+    if len(data) > 8 * 1024 * 1024:
+        raise ValueError("reference image too large (max 8MB)")
+    ext = ".png" if not filename.lower().endswith((".jpg", ".jpeg")) else ".jpg"
+    name = f"ref_{hashlib.sha256(data).hexdigest()[:16]}{ext}"
+    (REF_DIR / name).write_bytes(data)
+    return {"reference_id": name, "url": f"/references/{name}"}
+
+
+def reference_path(reference_id: str) -> str:
+    # token format is ref_<hex16>.<ext> — reject anything path-like
+    if "/" in reference_id or "\\" in reference_id or ".." in reference_id:
+        raise ValueError("invalid reference id")
+    p = REF_DIR / reference_id
+    if not p.exists():
+        raise ValueError("reference not found")
+    return str(p)
+
+
+# ---------------- history ----------------
+def campaign_detail(campaign_id: int) -> dict:
+    """Full campaign state — used to resume a past campaign from History."""
+    db = SessionLocal()
+    try:
+        c = db.get(Campaign, campaign_id)
+        if not c:
+            raise ValueError("campaign not found")
+        out = _campaign_response(db, c)
+        out["creatives"] = []
+        for cr in c.creatives:
+            placement = json.loads(cr.placement_json) if cr.placement_json else None
+            out["creatives"].append({
+                "creative_id": cr.id,
+                "campaign_id": c.id,
+                "url": cr.url,
+                "skill": cr.skill,
+                "prompt_tweak": cr.prompt_tweak,
+                "reference_used": bool(cr.reference_path),
+                "published": bool(cr.published),
+                "published_at": cr.published_at.isoformat() + "Z" if cr.published_at else None,
+                "profile": json.loads(cr.profile_json) if cr.profile_json else None,
+                "copy_blocks": json.loads(cr.copy_json) if cr.copy_json else {},
+                "placement": placement,
+                "video": json.loads(cr.video_json) if cr.video_json else None,
+                "assets": [_asset_out(a).model_dump() for a in cr.assets],
+            })
+        out["decisions"] = [{
+            "stage": d.stage, "action": d.action, "feedback": d.feedback,
+            "at": d.created_at.isoformat() + "Z",
+        } for d in c.decisions]
+        return out
+    finally:
+        db.close()
+
+
+def campaign_history() -> dict:
+    """The 'what did I previously generate' shelf — newest first."""
+    db = SessionLocal()
+    try:
+        rows = db.query(Campaign).order_by(Campaign.id.desc()).all()
+        items = []
+        for c in rows:
+            n_assets = sum(len(cr.assets) for cr in c.creatives)
+            spend = round(sum(a.cost_usd or 0 for cr in c.creatives for a in cr.assets), 3)
+            items.append({
+                "id": c.id, "product": c.product, "objective": c.objective,
+                "status": c.status,
+                "created_at": c.created_at.isoformat() + "Z",
+                "creatives": len(c.creatives),
+                "assets": n_assets,
+                "image_spend_usd": spend,
+                "published": any(cr.published for cr in c.creatives),
+                "skills": sorted({cr.skill for cr in c.creatives}),
+                "cost_usd": _campaign_cost(db, c.id),
+            })
+        return {"campaigns": items}
     finally:
         db.close()
 
@@ -206,7 +478,7 @@ def _asset_dto(a: Asset) -> dict:
     return {
         "id": a.id, "url": f"/assets/{a.id}", "kind": a.kind, "brand": a.brand,
         "skill": a.skill, "quality": a.quality, "aspect": a.aspect,
-        "run_id": a.run_id, "creative_id": a.creative_id, "prompt": a.prompt,
+        "campaign_id": a.campaign_id, "creative_id": a.creative_id, "prompt": a.prompt,
         "from_cache": bool(a.from_cache), "cache_hit": bool(a.cache_hit),
         "origin": a.origin, "cost_usd": round(a.cost_usd or 0.0, 3),
     }
@@ -236,7 +508,8 @@ def library_stats() -> dict:
         hits = sum(1 for a in rows if a.cache_hit)
         # dollars saved = tier cost that a cache hit would otherwise have paid
         from config import tier_cost
-        saved = round(sum(tier_cost(a.quality) for a in rows if a.cache_hit), 3)
+        saved = round(sum(tier_cost(a.quality, a.aspect or "1:1")
+                          for a in rows if a.cache_hit), 3)
         return {
             "assets_stored": len(rows),
             "image_spend_usd": spend,
@@ -255,10 +528,10 @@ def reuse_asset(asset_id: int) -> dict:
         if not src:
             raise ValueError("asset not found")
         dup = Asset(
-            creative_id=None, run_id=src.run_id, brand=src.brand, skill=src.skill,
-            kind=src.kind, prompt=src.prompt, prompt_hash=src.prompt_hash,
-            aspect=src.aspect, quality=src.quality, path=src.path,
-            from_cache=0, cache_hit=1, origin="reuse", cost_usd=0.0)
+            creative_id=None, campaign_id=src.campaign_id, brand=src.brand,
+            skill=src.skill, kind=src.kind, prompt=src.prompt,
+            prompt_hash=src.prompt_hash, aspect=src.aspect, quality=src.quality,
+            path=src.path, from_cache=0, cache_hit=1, origin="reuse", cost_usd=0.0)
         db.add(dup)
         db.commit()
         db.refresh(dup)
@@ -267,8 +540,9 @@ def reuse_asset(asset_id: int) -> dict:
         db.close()
 
 
-async def variant_asset(asset_id: int) -> dict:
-    """Re-render an asset's prompt against the current brief context.
+async def variant_asset(asset_id: int, prompt: str = None) -> dict:
+    """Re-render an asset — optionally with a USER-EDITED prompt (their
+    flexibility knob for tweaking a product image).
 
     Goes through the prompt-hash cache: an identical prompt/quality is a $0 hit;
     a genuine re-render pays the tier cost and is logged.
@@ -278,15 +552,24 @@ async def variant_asset(asset_id: int) -> dict:
         src = db.get(Asset, asset_id)
         if not src:
             raise ValueError("asset not found")
-        token = cost.current_run_id.set(src.run_id)
+        use_prompt = (prompt or "").strip() or src.prompt
+        # keep the original creative's reference image, if it had one
+        ref_png, ref_hash = None, ""
+        if src.creative_id:
+            cr = db.get(Creative, src.creative_id)
+            if cr and cr.reference_path and Path(cr.reference_path).exists():
+                ref_png = Path(cr.reference_path).read_bytes()
+                ref_hash = hashlib.sha256(ref_png).hexdigest()[:16]
+        token = cost.current_campaign_id.set(src.campaign_id)
         try:
             rec = await asyncio.to_thread(
-                creative_agent.render_one, src.prompt, src.aspect, src.kind, 0,
-                _cache_lookup)
+                creative_agent.render_one, use_prompt, src.aspect, src.kind, 0,
+                _cache_lookup, ref_png, ref_hash)
         finally:
-            cost.current_run_id.reset(token)
+            cost.current_campaign_id.reset(token)
         dup = Asset(
-            creative_id=None, run_id=src.run_id, brand=src.brand, skill=src.skill,
+            creative_id=src.creative_id, campaign_id=src.campaign_id,
+            brand=src.brand, skill=src.skill,
             kind=rec["kind"], prompt=rec["prompt"], prompt_hash=rec["prompt_hash"],
             aspect=rec["aspect"], quality=rec["quality"], path=rec["path"],
             from_cache=1 if rec["from_cache"] else 0,
@@ -306,15 +589,9 @@ def _get_skill(skill: str):
     return get_skill(skill)
 
 
-def serialize_brief(b: Brief) -> dict:
-    body = BriefBody.model_validate_json(b.body_json)
-    return BriefResponse(id=b.id, run_id=b.run_id, status=b.status,
-                         executive_summary=b.executive_summary, body=body).model_dump()
-
-
-def _run_cost(db, run_id: int) -> float:
+def _campaign_cost(db, campaign_id: int) -> float:
     total = (db.query(func.coalesce(func.sum(LLMCall.cost_usd), 0.0))
-             .filter(LLMCall.run_id == run_id).scalar())
+             .filter(LLMCall.campaign_id == campaign_id).scalar())
     return round(float(total or 0.0), 4)
 
 

@@ -7,13 +7,18 @@ export default defineConfig({
     port: 5173,
     proxy: {
       // proxy API + asset routes to the FastAPI backend
-      "/runs": "http://localhost:8000",
-      "/briefs": "http://localhost:8000",
+      "/campaigns": "http://localhost:8000",
       "/creative": "http://localhost:8000",
       "/placement": "http://localhost:8000",
+      "/publish": "http://localhost:8000",
       "/assets": "http://localhost:8000",
       "/cost": "http://localhost:8000",
       "/health": "http://localhost:8000",
+      "/library": "http://localhost:8000",
+      "/skills": "http://localhost:8000",
+      "/prompts": "http://localhost:8000",
+      "/video": "http://localhost:8000",      // also matches /videos/*
+      "/reference": "http://localhost:8000",  // also matches /references/*
     },
   },
 });

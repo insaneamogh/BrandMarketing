@@ -4,53 +4,66 @@ A demo-grade but production-shaped agentic pipeline for CPG marketing, targeting
 Colgate-Palmolive's **Hill's Pet Nutrition** and **Palmolive / skin-health**
 portfolios (deliberately **not** oral care).
 
-Three RAG-grounded analyst agents produce a findings brief → a human approves or
-rejects → an approved brief flows to a creative agent (slash-command skills) that
-diagnoses a product URL and generates ad-asset bundles → a placement pass recommends
-where/how to post. Rejection feedback loops into the analysts' next run. Every
-generated asset lands on a persistent **Asset Library** shelf, priced, with repeats
-served from cache at $0.00.
+A staged, human-gated handoff chain: Agent 1 (Research & Monitor) diagnoses what's
+going wrong → human approves → research hands off to Agent 2 (Strategy Planner),
+which turns the metrics into a plan + marketing changes + next steps → human
+approves → the plan hands off to Agent 3 (Creative), which generates reference-aware,
+prompt-tweakable ad assets, a placement plan with probability-scored expected
+metrics, and an Approve & Publish gate. Rejection at any gate re-runs that agent
+with the feedback injected. Every generated asset lands on a persistent
+**Asset Library** shelf, priced, with repeats served from cache at $0.00; every
+campaign is resumable from **History**.
 
 ```
-Pipeline (this run):  01 Overview → 02 Strategist → 03 Sales → 04 Monitor → 05 Approval → 06 Creative Studio
-Below the divider   :  ▤ Asset Library  (persistent shelf, outlives every run)
-        ▲ reject-feedback ──────────────────────────────────────┘  loop
+Pipeline:  01 Overview → 02 Research (AGT-1) → gate → 03 Plan (AGT-2) → gate → 04 Creative (AGT-3) → Approve & Publish
+Below the divider:  ▤ Asset Library · ⟲ History   (persistent shelves, outlive every campaign)
+        ▲ reject-feedback re-runs the gated agent ┘        └ published results feed AGT-1 next cycle
 ```
 
 ## Stack
 
-Python 3.11, FastAPI, ChromaDB (persistent), OpenAI (`gpt-4o`, `gpt-4o-mini`,
-image model via `IMAGE_MODEL`, `text-embedding-3-small`), Gemini (`gemini-2.0-flash`
-+ `google_search` grounding), SQLite/SQLAlchemy (Postgres-swappable), React + Vite.
-No LangGraph/LangChain — plain async Python + a simple orchestrator.
+Python 3.11, FastAPI, ChromaDB (persistent), **Gemini free tier for ALL text/vision/
+embeddings** (`gemini-3.5-flash`; `google_search` grounding on `gemini-2.5-flash`;
+`gemini-embedding-001`), OpenAI **for images only** (`gpt-image-2`; `gpt-4o-mini`
+as a rate-limit text lifeline), Seedance lite t2v (optional video), SQLite/SQLAlchemy
+(Postgres-swappable), React + Vite. No LangGraph/LangChain — plain async Python + a
+simple orchestrator. Provider policy is centralized in `config.py` + `llm/router.py`;
+agents name a task, never a provider.
 
-## Agents
+## Agents (the handoff chain)
 
-| # | Agent | Model | Output |
-|---|-------|-------|--------|
-| 1 | Strategist | gpt-4o | 3 cited strategies (angle, insight, segment, channel, sources) |
-| 2 | Sales & Distribution | gpt-4o | where_selling, lagging, CPL/CVR by channel, key_risks |
-| 3 | Performance Monitor | gpt-4o-mini | summary, alerts, scale_recommendation — **math precomputed in code** |
-| — | Brief merge | gpt-4o-mini | 4-sentence exec summary + combined body → `Brief(status=pending)` |
-| 4 | Creative | gpt-4o + image model | URL diagnosis → skill execution (copy + images) → placement pass |
+| # | Agent | Model (cost) | Output → handoff |
+|---|-------|--------------|------------------|
+| 1 | Research & Monitor | gemini-3.5-flash ($0) — **math precomputed in code** | summary, whats_wrong (severity+evidence+action), lagging, whats_working, scale rec → **human gate → Agent 2** |
+| 2 | Strategy Planner | gemini-3.5-flash ($0) + optional google_search on gemini-2.5-flash ($0) | plan_summary, campaign_angle, target segment, metric-grounded marketing_changes, next_steps → **human gate → Agent 3** |
+| 3 | Creative | gemini vision/copy ($0) + gpt-image-2 (tiered, the $10 budget) | URL diagnosis → copy + images (reference-image aware, prompt tweak, per-asset edit+regenerate) → placement + expected metrics w/ 0-1 probability → **Approve & Publish** |
+| — | Video (optional) | Seedance lite t2v (~$0.30/5s clip, explicit click only) | one mp4 per /bundle creative, cached |
 
-Grounding rule: analysts answer **only** from retrieved Chroma chunks; every claim
-cites `[src: filename]`. Banned-claim guidelines enforced in strategist + copy.
+State machine = `Campaign.status`: research_pending → research_approved →
+plan_pending → plan_approved → published (reject at a gate → `<stage>_rejected`,
+feedback stored per campaign+stage, consumed only by a successful re-run).
+
+Grounding rule: agents answer **only** from retrieved Chroma chunks; every claim
+cites `[src: filename]`; numbers copied verbatim. Banned-claim guidelines enforced
+in planner + copy. Gemini failures fall back to gpt-4o-mini so demos never die.
+`GET /prompts` exposes each agent's exact system prompt.
 
 ## Creative skills (`backend/skills/registry.py`)
 
 `/product-shoot` · `/amazon` (listing-compliant main image: pure white bg, ~85%
 frame, no text overlay) · `/meta` (4:5 + 9:16 + hook overlays) · `/bundle` (all +
-6-frame storyboard + Veo prompt — **no video API called**).
+6-frame storyboard + text-to-video prompt — video renders only via the explicit
+`POST /video` Seedance call, never inside the skill).
 
 Each `image_spec` carries `kind` + `aspect`; the router assigns a **quality tier**
 per kind (`config.QUALITY_BY_KIND`): hero/compliance → `high`, lifestyle/infographic
 → `medium`, storyboard stills → `low`. Tier maps to per-image cost
-(`config.IMAGE_TIERS`, ~gpt-image-1 1024² pricing).
+(`config.IMAGE_TIERS`, ~gpt-image-2 1024² pricing).
 
 ## Prompt-hash caching (the visible cost-discipline story)
 
-- Cache key = `sha256(prompt | aspect | quality)` (`creative.prompt_hash`).
+- Cache key = `sha256(prompt | aspect | quality | ref_hash)` (`creative.prompt_hash`)
+  — a user-uploaded reference image changes the output, so it is part of the key.
 - Before generating, `orchestrator._cache_lookup(hash)` checks for a prior
   **real** asset (origin `generated`/`variant`, file present on disk). Hit ⇒ reuse
   the file at **$0.00**, `origin="cache_hit"`, and record `saved_usd = tier cost`.
@@ -63,9 +76,10 @@ API keys are present — offline everything is a placeholder fallback, honestly 
 
 ## Asset Library
 
-`Asset` rows carry: `prompt_hash`, `quality`, `aspect`, `brand`, `skill`, `run_id`,
-`origin`, `from_cache`, `cache_hit`, `cost_usd`, `path`. `creative_id` is nullable
-(library-origin rows from Reuse/Variant).
+`Asset` rows carry: `prompt_hash`, `quality`, `aspect`, `brand`, `skill`,
+`campaign_id`, `origin`, `from_cache`, `cache_hit`, `cost_usd`, `path`.
+`creative_id` is nullable (library-origin rows from Reuse/Variant). **Variant**
+accepts an optional user-edited prompt — the per-image tweak flexibility.
 
 Screen (sidebar, below a divider, outside the numbered pipeline):
 - **4 stats:** assets stored · total image spend · cache hits · dollars saved.
@@ -78,17 +92,27 @@ Screen (sidebar, below a divider, outside the numbered pipeline):
 ## API
 
 ```
-POST /runs                      {product, objective} -> 3 agent outputs + brief
-GET  /briefs/{id}
-POST /briefs/{id}/decision      {action: approve|reject, feedback?}
-POST /creative                  {brief_id, url, skill} -> profile + assets + copy
-POST /placement                 {creative_id} -> placement plan
+POST /campaigns                 {product, objective} -> Agent 1 research (research_pending)
+GET  /campaigns                 history (everything previously generated)
+GET  /campaigns/{id}            full campaign state (resume from History)
+POST /campaigns/{id}/research   re-run Agent 1 (consumes rejection feedback)
+POST /campaigns/{id}/plan       hand approved research to Agent 2
+POST /campaigns/{id}/decision   {stage: research|plan, action: approve|reject, feedback?}
+POST /creative                  {campaign_id, url, skill, reference_id?, prompt_tweak?}
+POST /placement                 {creative_id} -> placements + expected metrics w/ probability
+POST /publish                   {creative_id} -> Approve & Publish (POC: recorded in DB)
+POST /video                     {creative_id} -> Seedance render | prompt (if disabled)
+GET  /videos/{creative_id}      serve the rendered mp4
+POST /reference                 multipart upload -> {reference_id}
+GET  /references/{id}           serve an uploaded reference image
+GET  /prompts                   each agent's exact system prompt (read-only)
+GET  /skills                    list creative skills
 GET  /assets/{id}               serve image (reads from the Volume, never static)
 GET  /cost                      cost readout by model
 GET  /library?brand=&skill=&cache_only=
 GET  /library/stats             assets_stored, image_spend_usd, cache_hits, dollars_saved_usd
 POST /assets/{id}/reuse         duplicate onto the shelf ($0)
-POST /assets/{id}/variant       re-render the stored prompt (cache-aware)
+POST /assets/{id}/variant       {prompt?} re-render, optionally with a user-edited prompt
 GET  /health
 ```
 
@@ -109,9 +133,11 @@ So a single writable location must survive redeploys.
   `nixpacks.toml` do this). Hardcoding 8000 = failed healthcheck.
 - **Single service:** FastAPI serves `frontend/dist` (built in `nixpacks.toml`).
   One URL, no CORS. Split later if desired.
-- **Env vars (dashboard, never commit `.env`):** `OPENAI_API_KEY`, `GOOGLE_API_KEY`,
-  `DATA_DIR`, `MAX_IMAGE_CALLS_PER_RUN`, `DEMO_MODE`, optional `IMAGE_MODEL` /
-  `GEMINI_MODEL` / `DATABASE_URL`.
+- **Env vars (dashboard, never commit `.env`):** `GOOGLE_API_KEY` (required — all
+  text is Gemini free tier), `OPENAI_API_KEY` (images), `SEEDANCE_API_KEY` (optional
+  video), `DATA_DIR`, `MAX_IMAGE_CALLS_PER_RUN`, `DEMO_MODE`, optional
+  `IMAGE_PROVIDER` / `IMAGE_MODEL` / `GEMINI_MODEL` / `EMBED_PROVIDER` / `DATABASE_URL`
+  (full list in `.env.example`).
 - **Cost guard:** set a Railway usage alert; `MAX_IMAGE_CALLS_PER_RUN` caps spend
   per run so a retry loop can't run away.
 - **Cold starts:** warm the URL before a demo, or run locally and show the Railway
@@ -130,7 +156,10 @@ swap.
 
 ## Build order (already implemented)
 
-1. Scaffold (FastAPI + SQLite + React shell) · 2. LLM clients + router · 3. RAG +
-3 analysts + cited brief · 4. Approval + reject-feedback loop · 5. URL diagnosis +
-skills + `/amazon` + cache fallback · 6. Remaining skills + placement · 7. Glass UI ·
-8. Asset Library + prompt-hash caching + quality tiers + Railway persistence.
+1. Scaffold (FastAPI + SQLite + React shell) · 2. LLM clients + provider router
+(Gemini free text, OpenAI images, Seedance video) · 3. RAG + grounded agents ·
+4. Staged handoff (research → gate → plan → gate → creative) + reject-feedback
+re-runs · 5. URL diagnosis + skills + cache fallback · 6. Placement + expected
+metrics w/ probability + Approve & Publish · 7. Reference-image upload + prompt
+tweak + per-asset edit/regenerate · 8. Glass UI + History + Asset Library +
+prompt-hash caching + quality tiers + Railway persistence.

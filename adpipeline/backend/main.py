@@ -1,18 +1,18 @@
-"""FastAPI app: routes for the 4-agent pipeline."""
-from fastapi import FastAPI, HTTPException
+"""FastAPI app: routes for the staged 3-agent handoff pipeline."""
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
 
 import orchestrator
-from config import DEMO_MODE, FRONTEND_DIST
-from models import (
-    Asset, Brief, Creative, Decision, Feedback, SessionLocal, init_db,
+from config import (
+    DEMO_MODE, FRONTEND_DIST, GOOGLE_API_KEY, IMAGE_PROVIDER, SEEDANCE_API_KEY,
 )
+from models import Asset, SessionLocal, init_db
 from rag import ingest
 from schemas import (
-    CreativeInput, DecisionInput, PlacementInput,
+    CampaignInput, CreativeInput, PlacementInput, PublishInput,
+    StageDecisionInput, VariantInput, VideoInput,
 )
 
 app = FastAPI(title="AdPipeline")
@@ -32,62 +32,146 @@ def _startup():
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "demo_mode": DEMO_MODE}
+    return {
+        "status": "ok",
+        "demo_mode": DEMO_MODE,
+        "text_provider": "gemini (free tier)" if GOOGLE_API_KEY else "openai fallback only",
+        "image_provider": IMAGE_PROVIDER,
+        "video_enabled": bool(SEEDANCE_API_KEY),
+    }
 
 
-class RunInput(BaseModel):
-    product: str
-    objective: str
+@app.get("/skills")
+def skills():
+    from skills.registry import list_skills
+    return {"skills": list_skills()}
 
 
-@app.post("/runs")
-async def create_run(inp: RunInput):
-    return await orchestrator.run_screening(inp.product, inp.objective)
+@app.get("/prompts")
+def prompts():
+    """Transparency: the exact system prompt each agent runs with."""
+    from agents import creative, planner, researcher
+    return {
+        "agent1_researcher": researcher.SYSTEM,
+        "agent2_planner": planner.SYSTEM,
+        "agent3_copywriter": creative.COPY_SYSTEM,
+        "agent3_media_planner": creative.PLACEMENT_SYSTEM,
+    }
 
 
-@app.get("/briefs/{brief_id}")
-def get_brief(brief_id: int):
-    db = SessionLocal()
+# ---------------- campaign lifecycle (the handoff chain) ----------------
+@app.post("/campaigns")
+async def create_campaign(inp: CampaignInput):
+    """Start a campaign: Agent 1 (Research & Monitor) runs immediately."""
+    return await orchestrator.start_campaign(inp.product, inp.objective)
+
+
+@app.get("/campaigns")
+def list_campaigns():
+    """History — everything previously generated, newest first."""
+    return orchestrator.campaign_history()
+
+
+@app.get("/campaigns/{campaign_id}")
+def get_campaign(campaign_id: int):
     try:
-        b = db.get(Brief, brief_id)
-        if not b:
-            raise HTTPException(404, "brief not found")
-        return orchestrator.serialize_brief(b)
-    finally:
-        db.close()
+        return orchestrator.campaign_detail(campaign_id)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
 
 
-@app.post("/briefs/{brief_id}/decision")
-def decide(brief_id: int, inp: DecisionInput):
-    db = SessionLocal()
+@app.post("/campaigns/{campaign_id}/research")
+async def rerun_research(campaign_id: int):
+    """Re-run Agent 1 (consumes any rejection feedback for this stage)."""
     try:
-        b = db.get(Brief, brief_id)
-        if not b:
-            raise HTTPException(404, "brief not found")
-        if inp.action not in ("approve", "reject"):
-            raise HTTPException(400, "action must be approve|reject")
-        if inp.action == "reject" and not (inp.feedback or "").strip():
-            raise HTTPException(400, "reject requires feedback")
-        b.status = "approved" if inp.action == "approve" else "rejected"
-        db.add(Decision(brief_id=brief_id, action=inp.action, feedback=inp.feedback))
-        if inp.action == "reject":
-            db.add(Feedback(product=b.run.product, text=inp.feedback))
-        db.commit()
-        return {"brief_id": brief_id, "status": b.status}
-    finally:
-        db.close()
+        return await orchestrator.rerun_research(campaign_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/campaigns/{campaign_id}/plan")
+async def run_plan(campaign_id: int):
+    """Hand the approved research to Agent 2 (Strategy Planner)."""
+    try:
+        return await orchestrator.run_plan(campaign_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/campaigns/{campaign_id}/decision")
+def decide(campaign_id: int, inp: StageDecisionInput):
+    """Human gate: approve hands off to the next agent; reject stores feedback."""
+    try:
+        return orchestrator.decide(campaign_id, inp.stage, inp.action, inp.feedback)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
 
 @app.post("/creative")
 async def creative(inp: CreativeInput):
-    return await orchestrator.run_creative(inp.brief_id, inp.url, inp.skill)
+    """Agent 3: URL diagnosis -> copy + images (reference image + prompt tweak aware)."""
+    try:
+        return await orchestrator.run_creative(
+            inp.campaign_id, inp.url, inp.skill, inp.reference_id, inp.prompt_tweak)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
 
 @app.post("/placement")
 async def placement(inp: PlacementInput):
-    return await orchestrator.run_placement(inp.creative_id)
+    """Placement plan + expected metrics with probabilities."""
+    try:
+        return await orchestrator.run_placement(inp.creative_id)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
 
 
+@app.post("/publish")
+def publish(inp: PublishInput):
+    """Approve & Publish (POC: recorded in DB; ad-platform API goes here)."""
+    try:
+        return orchestrator.publish(inp.creative_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+# ---------------- video (Seedance, optional) ----------------
+@app.post("/video")
+async def video(inp: VideoInput):
+    try:
+        return await orchestrator.run_video(inp.creative_id)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+
+
+@app.get("/videos/{creative_id}")
+def get_video(creative_id: int):
+    try:
+        return FileResponse(orchestrator.video_path(creative_id), media_type="video/mp4")
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+
+
+# ---------------- reference images ----------------
+@app.post("/reference")
+async def upload_reference(file: UploadFile = File(...)):
+    """Upload a reference image for faithful product renders."""
+    try:
+        data = await file.read()
+        return orchestrator.save_reference(data, file.filename or "")
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.get("/references/{reference_id}")
+def get_reference(reference_id: str):
+    try:
+        return FileResponse(orchestrator.reference_path(reference_id))
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+
+
+# ---------------- assets + library ----------------
 @app.get("/assets/{asset_id}")
 def get_asset(asset_id: int):
     db = SessionLocal()
@@ -105,7 +189,6 @@ def cost():
     return orchestrator.cost_summary()
 
 
-# ---------------- Asset Library ----------------
 @app.get("/library")
 def library(brand: str | None = None, skill: str | None = None,
             cache_only: bool = False):
@@ -126,9 +209,11 @@ def reuse(asset_id: int):
 
 
 @app.post("/assets/{asset_id}/variant")
-async def variant(asset_id: int):
+async def variant(asset_id: int, inp: VariantInput | None = None):
+    """Re-render an asset; pass {"prompt": "..."} to use a user-edited prompt."""
     try:
-        return await orchestrator.variant_asset(asset_id)
+        return await orchestrator.variant_asset(
+            asset_id, inp.prompt if inp else None)
     except ValueError as e:
         raise HTTPException(404, str(e))
 

@@ -8,7 +8,7 @@ from typing import List, Optional
 import chromadb
 
 from config import CHROMA_DIR
-from llm import openai_client
+from llm import router
 
 _client = None
 _col = None
@@ -29,7 +29,7 @@ def count() -> int:
 
 
 def upsert(ids, documents, metadatas):
-    embeddings = openai_client.embed(documents)
+    embeddings = router.embed(documents)
     _get_col().upsert(
         ids=ids, documents=documents,
         metadatas=metadatas, embeddings=embeddings,
@@ -41,7 +41,7 @@ def retrieve(collection: Optional[str], query: str, k: int = 4) -> List[dict]:
 
     Each result: {text, source, collection, product, region, score}.
     """
-    emb = openai_client.embed([query])[0]
+    emb = router.embed([query])[0]
     where = {"collection": collection} if collection else None
     res = _get_col().query(
         query_embeddings=[emb], n_results=k, where=where,

@@ -50,7 +50,7 @@ def ingest():
         path = Path(CORPUS_DIR) / fname
         if not path.exists():
             continue
-        chunks = _chunk(path.read_text())
+        chunks = _chunk(path.read_text(encoding="utf-8"))
         for coll in collections:
             for i, ch in enumerate(chunks):
                 ids.append(f"{fname}:{coll}:{i}")

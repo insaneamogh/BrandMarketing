@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 
 // ============================================================
-// AdPipeline — frosted glass edition, wired to the FastAPI backend.
-// White-first translucent glass on a soft light field. Navy = text +
-// one solid panel. Blue = actions/active only. Red/green = danger/health.
+// AdPipeline — staged 3-agent handoff edition.
+// Agent 1 Research → human gate → Agent 2 Plan → human gate →
+// Agent 3 Creative (reference image, prompt tweaks, expected
+// metrics with probability, Approve & Publish).
+// White-first translucent glass on a soft light field.
 // ============================================================
 
 const T = {
@@ -36,12 +38,10 @@ const glass = {
 };
 
 const FLOW = [
-  { key: "overview", step: "01", label: "Pipeline", sub: "System overview" },
-  { key: "strategist", step: "02", label: "Strategist", sub: "Angles & audiences" },
-  { key: "sales", step: "03", label: "Sales Analyst", sub: "Distribution truth" },
-  { key: "monitor", step: "04", label: "Monitor", sub: "Performance & alerts" },
-  { key: "gate", step: "05", label: "Approval", sub: "Your decision" },
-  { key: "creative", step: "06", label: "Creative Studio", sub: "Generation & placement" },
+  { key: "overview", step: "01", label: "Pipeline", sub: "Start a campaign" },
+  { key: "research", step: "02", label: "Research & Monitor", sub: "Agent 1 · what's wrong" },
+  { key: "plan", step: "03", label: "Strategy Plan", sub: "Agent 2 · what to change" },
+  { key: "creative", step: "04", label: "Creative Studio", sub: "Agent 3 · make & publish" },
 ];
 
 const PRODUCTS = ["Hill's Youthful Vitality", "Palmolive Luminous Oils"];
@@ -49,7 +49,7 @@ const SKILLS = [
   { cmd: "/product-shoot", d: "4 hero images — packshot, macro, lifestyle, flat-lay" },
   { cmd: "/amazon", d: "Listing-compliant set + A+ content blocks" },
   { cmd: "/meta", d: "4:5 feed + 9:16 story with hook overlays" },
-  { cmd: "/bundle", d: "All sets + 6-frame video storyboard" },
+  { cmd: "/bundle", d: "All sets + storyboard + Seedance video prompt" },
 ];
 const DEFAULT_URL = {
   "Hill's Youthful Vitality":
@@ -66,9 +66,12 @@ async function api(path, opts) {
   return r.json();
 }
 
-function num(s) {
-  const m = String(s).match(/[\d.]+/);
-  return m ? parseFloat(m[0]) : 0;
+async function uploadFile(path, file) {
+  const fd = new FormData();
+  fd.append("file", file);
+  const r = await fetch(path, { method: "POST", body: fd });
+  if (!r.ok) throw new Error((await r.text()) || r.statusText);
+  return r.json();
 }
 
 export default function App() {
@@ -77,11 +80,10 @@ export default function App() {
   const [objective, setObjective] = useState(
     "Grow senior-pet demand efficiently in NA/EU and test scalable channels"
   );
-  const [run, setRun] = useState(null);
-  const [brief, setBrief] = useState(null);
-  const [decision, setDecision] = useState(null);
+  const [campaign, setCampaign] = useState(null);
   const [creative, setCreative] = useState(null);
   const [placement, setPlacement] = useState(null);
+  const [published, setPublished] = useState(null);
   const [cost, setCost] = useState({ total_usd: 0, by_model: [] });
   const [loading, setLoading] = useState("");
   const [error, setError] = useState("");
@@ -101,20 +103,19 @@ export default function App() {
     } catch {}
   };
 
-  const doRun = async () => {
+  const startCampaign = async () => {
     setError("");
-    setLoading("Running 3 analysts + brief…");
+    setLoading("Agent 1 — researching what's wrong…");
     try {
-      const res = await api("/runs", {
+      const res = await api("/campaigns", {
         method: "POST",
         body: JSON.stringify({ product, objective }),
       });
-      setRun(res);
-      setBrief(res.brief);
-      setDecision(null);
+      setCampaign(res);
       setCreative(null);
       setPlacement(null);
-      setView("strategist");
+      setPublished(null);
+      setView("research");
       refreshCost();
     } catch (e) {
       setError(String(e.message || e));
@@ -123,30 +124,67 @@ export default function App() {
     }
   };
 
-  const decide = async (action, feedback) => {
+  const rerunResearch = async () => {
+    setError("");
+    setLoading("Agent 1 — re-running with your feedback…");
+    try {
+      const res = await api(`/campaigns/${campaign.id}/research`, { method: "POST" });
+      setCampaign(res);
+      refreshCost();
+    } catch (e) {
+      setError(String(e.message || e));
+    } finally {
+      setLoading("");
+    }
+  };
+
+  const runPlan = async () => {
+    setError("");
+    setLoading("Agent 2 — building the plan from approved research…");
+    try {
+      const res = await api(`/campaigns/${campaign.id}/plan`, { method: "POST" });
+      setCampaign(res);
+      setView("plan");
+      refreshCost();
+    } catch (e) {
+      setError(String(e.message || e));
+    } finally {
+      setLoading("");
+    }
+  };
+
+  const decide = async (stage, action, feedback) => {
     setError("");
     try {
-      await api(`/briefs/${brief.id}/decision`, {
+      const res = await api(`/campaigns/${campaign.id}/decision`, {
         method: "POST",
-        body: JSON.stringify({ action, feedback }),
+        body: JSON.stringify({ stage, action, feedback }),
       });
-      setDecision(action);
-      if (action === "approve") setView("creative");
+      setCampaign((c) => ({ ...c, status: res.status }));
+      if (stage === "research" && action === "approve") await runPlan(); // HANDOFF 1→2
+      if (stage === "plan" && action === "approve") setView("creative"); // HANDOFF 2→3
     } catch (e) {
       setError(String(e.message || e));
     }
   };
 
-  const genCreative = async (url, skill) => {
+  const genCreative = async (url, skill, referenceId, promptTweak) => {
     setError("");
-    setLoading("Diagnosing URL + generating assets…");
+    setLoading("Agent 3 — diagnosing URL + generating assets…");
     try {
       const res = await api("/creative", {
         method: "POST",
-        body: JSON.stringify({ brief_id: brief.id, url, skill }),
+        body: JSON.stringify({
+          campaign_id: campaign.id,
+          url,
+          skill,
+          reference_id: referenceId || null,
+          prompt_tweak: promptTweak || null,
+        }),
       });
-      setCreative(res);
+      setCreative({ ...res, skill_used: skill });
       setPlacement(null);
+      setPublished(null);
       refreshCost();
     } catch (e) {
       setError(String(e.message || e));
@@ -157,7 +195,7 @@ export default function App() {
 
   const plan = async () => {
     setError("");
-    setLoading("Running placement pass…");
+    setLoading("Agent 3 — placement + expected metrics…");
     try {
       const res = await api("/placement", {
         method: "POST",
@@ -172,9 +210,64 @@ export default function App() {
     }
   };
 
+  const doPublish = async () => {
+    setError("");
+    setLoading("Publishing…");
+    try {
+      const res = await api("/publish", {
+        method: "POST",
+        body: JSON.stringify({ creative_id: creative.creative_id }),
+      });
+      setPublished(res);
+      setCampaign((c) => ({ ...c, status: "published" }));
+      refreshCost();
+    } catch (e) {
+      setError(String(e.message || e));
+    } finally {
+      setLoading("");
+    }
+  };
+
+  const openCampaign = async (id) => {
+    setError("");
+    setLoading("Loading campaign…");
+    try {
+      const d = await api(`/campaigns/${id}`);
+      setCampaign(d);
+      setPublished(null);
+      const last = d.creatives?.[d.creatives.length - 1];
+      if (last) {
+        setCreative({
+          creative_id: last.creative_id,
+          campaign_id: d.id,
+          profile: last.profile,
+          assets: last.assets,
+          copy_blocks: last.copy_blocks,
+          skill_used: last.skill,
+          prompt_tweak: last.prompt_tweak,
+          reference_used: last.reference_used,
+        });
+        setPlacement(last.placement);
+        if (last.published)
+          setPublished({ status: "published", published_at: last.published_at, channels: [] });
+      } else {
+        setCreative(null);
+        setPlacement(null);
+      }
+      const s = d.status;
+      setView(
+        s.startsWith("research") ? "research"
+        : s.startsWith("plan") && s !== "plan_approved" ? "plan"
+        : "creative"
+      );
+    } catch (e) {
+      setError(String(e.message || e));
+    } finally {
+      setLoading("");
+    }
+  };
+
   const idx = FLOW.findIndex((f) => f.key === view);
-  const inFlow = idx >= 0;
-  const next = inFlow ? FLOW[idx + 1] : null;
   const calls = cost.by_model.reduce((a, m) => a + m.calls, 0);
 
   return (
@@ -195,61 +288,31 @@ export default function App() {
       </div>
 
       <div style={{ display: "flex", position: "relative", zIndex: 1, minHeight: "100vh" }}>
-        <Sidebar view={view} setView={setView} idx={idx} cost={cost} calls={calls} run={run} />
+        <Sidebar view={view} setView={setView} idx={idx} cost={cost} calls={calls} campaign={campaign} />
         <main style={{ flex: 1, overflowY: "auto" }}>
           <div style={{ maxWidth: 1140, margin: "0 auto", padding: "40px 44px 72px" }}>
-            <TopBar view={view} go={setView} run={run} product={product} />
+            <TopBar view={view} go={setView} campaign={campaign} product={product} />
             {error && <Banner tone="err">{error}</Banner>}
             {loading && <Banner tone="load">{loading}</Banner>}
 
             {view === "overview" && (
               <Overview
-                {...{ product, setProduct, objective, setObjective, run, doRun, loading, cost, go: setView }}
+                {...{ product, setProduct, objective, setObjective, campaign, startCampaign, loading }}
               />
             )}
-            {view === "strategist" && <Strategist run={run} onRerun={doRun} loading={loading} />}
-            {view === "sales" && <SalesAnalyst run={run} />}
-            {view === "monitor" && <Monitor run={run} />}
-            {view === "gate" && (
-              <Gate {...{ run, brief, decision, decide, doRun, loading }} />
+            {view === "research" && (
+              <Research {...{ campaign, decide, rerunResearch, loading }} />
+            )}
+            {view === "plan" && (
+              <Plan {...{ campaign, decide, runPlan, loading }} />
             )}
             {view === "creative" && (
-              <Creative
-                {...{ product, brief, creative, placement, genCreative, plan, loading }}
+              <CreativeStudio
+                {...{ product, campaign, creative, placement, published, genCreative, plan, doPublish, loading, refreshCost }}
               />
             )}
+            {view === "history" && <History onOpen={openCampaign} />}
             {view === "library" && <Library onCost={refreshCost} />}
-
-            {next && (
-              <button
-                onClick={() => setView(next.key)}
-                style={{
-                  marginTop: 40,
-                  width: "100%",
-                  padding: "20px 28px",
-                  borderRadius: 18,
-                  border: "none",
-                  cursor: "pointer",
-                  background: T.blue,
-                  color: "#fff",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  fontFamily: T.sans,
-                  boxShadow: "0 12px 30px rgba(31,117,254,0.30)",
-                }}
-              >
-                <span style={{ textAlign: "left" }}>
-                  <span style={{ fontFamily: T.mono, fontSize: 11, opacity: 0.85, letterSpacing: 1 }}>
-                    NEXT · STEP {next.step}
-                  </span>
-                  <span style={{ display: "block", fontFamily: T.serif, fontSize: 24, marginTop: 3 }}>
-                    {next.label} — {next.sub.toLowerCase()}
-                  </span>
-                </span>
-                <span style={{ fontSize: 28 }}>→</span>
-              </button>
-            )}
           </div>
         </main>
       </div>
@@ -273,7 +336,11 @@ function blob(top, side, sx, bottom, size, color, isBottom) {
 }
 
 /* ---------- shell ---------- */
-function Sidebar({ view, setView, idx, cost, calls, run }) {
+function Sidebar({ view, setView, idx, cost, calls, campaign }) {
+  const shelf = [
+    { key: "library", icon: "▤", label: "Asset Library", sub: "Persistent shelf" },
+    { key: "history", icon: "⟲", label: "History", sub: "Past campaigns" },
+  ];
   return (
     <aside
       style={{
@@ -368,53 +435,60 @@ function Sidebar({ view, setView, idx, cost, calls, run }) {
         })}
       </nav>
 
-      {/* below the divider: the persistent shelf that outlives every run */}
+      {/* below the divider: shelves that outlive every campaign */}
       <div style={{ height: 1, background: T.line, margin: "16px 8px" }} />
-      <button
-        onClick={() => setView("library")}
-        style={{
-          display: "flex",
-          gap: 12,
-          width: "100%",
-          textAlign: "left",
-          alignItems: "center",
-          padding: "11px 12px",
-          borderRadius: 12,
-          border: "none",
-          cursor: "pointer",
-          fontFamily: T.sans,
-          background: view === "library" ? "rgba(255,255,255,0.9)" : "transparent",
-          boxShadow: view === "library" ? "0 4px 14px rgba(11,29,51,0.08)" : "none",
-        }}
-      >
-        <span
-          style={{
-            fontSize: 15,
-            width: 25,
-            height: 25,
-            borderRadius: 8,
-            flexShrink: 0,
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            background: view === "library" ? T.blue : "transparent",
-            border: view === "library" ? "none" : `1.5px solid ${T.line}`,
-            color: view === "library" ? "#fff" : T.faint,
-          }}
-        >
-          ▤
-        </span>
-        <span>
-          <div style={{ fontSize: 14.5, fontWeight: view === "library" ? 700 : 500, color: view === "library" ? T.blue : T.ink }}>
-            Asset Library
-          </div>
-          <div style={{ fontSize: 11.5, color: T.faint, marginTop: 1 }}>Persistent shelf</div>
-        </span>
-      </button>
+      {shelf.map((n) => {
+        const active = view === n.key;
+        return (
+          <button
+            key={n.key}
+            onClick={() => setView(n.key)}
+            style={{
+              display: "flex",
+              gap: 12,
+              width: "100%",
+              textAlign: "left",
+              alignItems: "center",
+              padding: "11px 12px",
+              marginBottom: 3,
+              borderRadius: 12,
+              border: "none",
+              cursor: "pointer",
+              fontFamily: T.sans,
+              background: active ? "rgba(255,255,255,0.9)" : "transparent",
+              boxShadow: active ? "0 4px 14px rgba(11,29,51,0.08)" : "none",
+            }}
+          >
+            <span
+              style={{
+                fontSize: 15,
+                width: 25,
+                height: 25,
+                borderRadius: 8,
+                flexShrink: 0,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: active ? T.blue : "transparent",
+                border: active ? "none" : `1.5px solid ${T.line}`,
+                color: active ? "#fff" : T.faint,
+              }}
+            >
+              {n.icon}
+            </span>
+            <span>
+              <div style={{ fontSize: 14.5, fontWeight: active ? 700 : 500, color: active ? T.blue : T.ink }}>
+                {n.label}
+              </div>
+              <div style={{ fontSize: 11.5, color: T.faint, marginTop: 1 }}>{n.sub}</div>
+            </span>
+          </button>
+        );
+      })}
 
       <div style={{ marginTop: "auto", background: T.ink, borderRadius: 16, padding: "18px 18px", color: "#fff" }}>
         <div style={{ fontFamily: T.mono, fontSize: 10, opacity: 0.65, letterSpacing: 1 }}>
-          {run ? `RUN-${String(run.run_id).padStart(3, "0")}` : "RUN-—"} · LIVE COST
+          {campaign ? `CAMP-${String(campaign.id).padStart(3, "0")}` : "CAMP-—"} · LIVE COST
         </div>
         <div style={{ fontFamily: T.serif, fontSize: 32, marginTop: 6 }}>
           ${cost.total_usd.toFixed(2)}
@@ -427,10 +501,24 @@ function Sidebar({ view, setView, idx, cost, calls, run }) {
   );
 }
 
-function TopBar({ view, go, run, product }) {
+function statusChip(status) {
+  const map = {
+    research_pending: { l: "RESEARCH PENDING", c: T.amber, bg: T.amberSoft },
+    research_rejected: { l: "RESEARCH REJECTED", c: T.red, bg: T.redSoft },
+    research_approved: { l: "RESEARCH APPROVED", c: T.green, bg: T.greenSoft },
+    plan_pending: { l: "PLAN PENDING", c: T.amber, bg: T.amberSoft },
+    plan_rejected: { l: "PLAN REJECTED", c: T.red, bg: T.redSoft },
+    plan_approved: { l: "PLAN APPROVED", c: T.green, bg: T.greenSoft },
+    published: { l: "PUBLISHED", c: "#fff", bg: T.green },
+  };
+  const m = map[status] || { l: status?.toUpperCase() || "—", c: T.soft, bg: "rgba(11,29,51,0.05)" };
+  return <Pill color={m.c} bg={m.bg}>{m.l}</Pill>;
+}
+
+function TopBar({ view, go, campaign, product }) {
   const idx = FLOW.findIndex((f) => f.key === view);
   return (
-    <div style={{ display: "flex", alignItems: "center", marginBottom: 32, flexWrap: "wrap", gap: 4 }}>
+    <div style={{ display: "flex", alignItems: "center", marginBottom: 32, flexWrap: "wrap", gap: 6 }}>
       {FLOW.map((s, i) => (
         <div key={s.key} style={{ display: "flex", alignItems: "center" }}>
           <button
@@ -448,12 +536,14 @@ function TopBar({ view, go, run, product }) {
           >
             {s.label}
           </button>
-          {i < FLOW.length - 1 && <span style={{ color: T.faint, margin: "0 7px", opacity: 0.5 }}>·</span>}
+          {i < FLOW.length - 1 && <span style={{ color: T.faint, margin: "0 7px", opacity: 0.5 }}>→</span>}
         </div>
       ))}
-      <span style={{ marginLeft: "auto", fontFamily: T.mono, fontSize: 11.5, color: T.soft }}>
-        {product}
-        {run ? ` · Run ${String(run.run_id).padStart(3, "0")}` : ""}
+      <span style={{ marginLeft: "auto", display: "flex", gap: 10, alignItems: "center" }}>
+        {campaign && statusChip(campaign.status)}
+        <span style={{ fontFamily: T.mono, fontSize: 11.5, color: T.soft }}>
+          {campaign ? campaign.product : product}
+        </span>
       </span>
     </div>
   );
@@ -568,6 +658,7 @@ const inputStyle = {
   border: `1px solid ${T.line}`,
   borderRadius: 12,
   padding: "12px 15px",
+  boxSizing: "border-box",
 };
 
 function Banner({ tone, children }) {
@@ -602,24 +693,105 @@ function Empty({ label }) {
   );
 }
 
+function Stamp({ label, good }) {
+  return (
+    <div
+      style={{
+        transform: "rotate(-6deg)",
+        display: "inline-block",
+        border: `3px solid ${good ? T.green : T.red}`,
+        color: good ? T.green : T.red,
+        padding: "4px 18px",
+        fontFamily: T.mono,
+        fontWeight: 700,
+        letterSpacing: 3,
+        borderRadius: 8,
+        fontSize: 22,
+        opacity: 0.9,
+        marginBottom: 12,
+      }}
+    >
+      {label}
+    </div>
+  );
+}
+
+/* ---------- reusable stage gate ---------- */
+function Gate({ stage, campaign, decide, rerun, loading, approveLabel }) {
+  const [fb, setFb] = useState("");
+  const status = campaign.status;
+  const rejected = status === `${stage}_rejected`;
+  const pending = status === `${stage}_pending`;
+  if (!pending && !rejected) return null;
+  return (
+    <Card style={{ marginTop: 16, background: "rgba(255,255,255,0.75)" }}>
+      <Label>HUMAN GATE · YOUR DECISION HANDS THIS OFF</Label>
+      {rejected ? (
+        <div style={{ marginTop: 14 }}>
+          <p style={{ fontSize: 13.5, color: T.soft, marginBottom: 14 }}>
+            Feedback stored. Re-run the agent to see it adapt — your feedback is injected into its prompt.
+          </p>
+          <Btn onClick={rerun} disabled={!!loading}>
+            {loading ? "Re-running…" : `♻ Re-run ${stage} with feedback`}
+          </Btn>
+        </div>
+      ) : (
+        <>
+          <div style={{ display: "flex", gap: 14, marginTop: 14, alignItems: "center", flexWrap: "wrap" }}>
+            <Btn kind="approve" onClick={() => decide(stage, "approve")} disabled={!!loading}>
+              {approveLabel}
+            </Btn>
+            <Btn
+              kind="danger"
+              disabled={!!loading}
+              onClick={() => {
+                if (!fb.trim()) {
+                  alert("Reject requires feedback.");
+                  return;
+                }
+                decide(stage, "reject", fb);
+              }}
+            >
+              Reject with feedback
+            </Btn>
+          </div>
+          <textarea
+            value={fb}
+            onChange={(e) => setFb(e.target.value)}
+            placeholder={`Rejection feedback (required to reject) — the ${stage} agent re-runs with it.`}
+            style={{ ...inputStyle, marginTop: 14, height: 76, resize: "vertical", fontFamily: T.sans }}
+          />
+        </>
+      )}
+    </Card>
+  );
+}
+
 /* ================= 01 OVERVIEW ================= */
-function Overview({ product, setProduct, objective, setObjective, run, doRun, loading, cost, go }) {
+function Overview({ product, setProduct, objective, setObjective, campaign, startCampaign, loading }) {
+  const [prompts, setPrompts] = useState(null);
+  const [showPrompts, setShowPrompts] = useState(false);
   const agents = [
-    { key: "strategist", n: "AGT-1", name: "Marketing Strategist", model: "gpt-4o", does: "Proposes cited campaign angles from market intel and brand guidelines.", ready: run && `${run.strategist.strategies.length} angles ready`, kpi: run ? String(run.strategist.strategies.length) : "—", kl: "strategies" },
-    { key: "sales", n: "AGT-2", name: "Sales & Distribution Analyst", model: "gpt-4o", does: "Maps where products sell and lag — CPL, CVR and stock truth per channel.", ready: run && `${run.sales.lagging.length} regions flagged`, kpi: run ? String(run.sales.lagging.length) : "—", kl: "lagging regions", kc: T.red },
-    { key: "monitor", n: "AGT-3", name: "Performance Monitor", model: "gpt-4o-mini", does: "Watches campaigns, raises alerts, recommends scale and kill.", ready: run && `${run.monitor.alerts.length} alerts`, kpi: run ? String(run.monitor.alerts.length) : "—", kl: "alerts", kc: T.red },
-    { key: "creative", n: "AGT-4", name: "Creative Agent", model: "gpt-4o + gpt-image-1", does: "Diagnoses a product URL, generates asset sets, plans placements.", ready: "4 skills loaded", kpi: "4", kl: "skills" },
+    { n: "AGT-1", name: "Research & Monitor", model: "gemini-3.5-flash", does: "Watches campaigns and diagnoses what's going wrong, what lags, what works. Math runs in code, never the model." },
+    { n: "AGT-2", name: "Strategy Planner", model: "gemini-3.5-flash + 2.5 search", does: "Turns approved research into a plan: campaign angle, marketing changes grounded in metrics, next steps." },
+    { n: "AGT-3", name: "Creative", model: "gemini-3.5 + gpt-image-2", does: "Executes the approved plan: images (reference-aware), copy, placement, expected metrics — then you publish." },
   ];
+  const togglePrompts = async () => {
+    if (!prompts) {
+      try { setPrompts(await api("/prompts")); } catch {}
+    }
+    setShowPrompts((s) => !s);
+  };
   return (
     <div>
       <PageTitle
-        eyebrow="Step 01 · System overview"
-        title={<>Four agents. <em style={{ color: T.blue }}>One decision.</em></>}
-        sub="Three analysts screen the market from grounded internal data. You approve once at step 05. The creative agent executes, and its results feed the monitor — the loop closes."
+        eyebrow="Step 01 · The handoff chain"
+        title={<>Three agents. <em style={{ color: T.blue }}>Two gates.</em> One publish.</>}
+        sub="Agent 1 researches what's going wrong. You approve — the research hands off to Agent 2, which plans the marketing changes. You approve again — the plan hands off to Agent 3, which generates the creative and gives you an Approve & Publish button with expected metrics."
       />
 
       <Card style={{ marginBottom: 16 }}>
-        <Label>NEW SCREENING RUN</Label>
+        <Label>NEW CAMPAIGN</Label>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr auto", gap: 14, marginTop: 12, alignItems: "end" }}>
           <div>
             <Label>PRODUCT</Label>
@@ -633,29 +805,23 @@ function Overview({ product, setProduct, objective, setObjective, run, doRun, lo
             <Label>OBJECTIVE</Label>
             <input style={{ ...inputStyle, marginTop: 6 }} value={objective} onChange={(e) => setObjective(e.target.value)} />
           </div>
-          <Btn onClick={doRun} disabled={!!loading}>
-            {loading ? "Running…" : "Run screening →"}
+          <Btn onClick={startCampaign} disabled={!!loading}>
+            {loading ? "Running…" : "Start campaign →"}
           </Btn>
         </div>
       </Card>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-        {agents.map((a) => (
-          <Card key={a.n} style={{ cursor: run ? "pointer" : "default" }}>
-            <div onClick={() => run && go(a.key)}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <Label>{a.n} · {a.model.toUpperCase()}</Label>
-                <span style={{ fontFamily: T.mono, fontSize: 11, color: a.kc || T.soft, fontWeight: 600 }}>
-                  ● {a.ready || "idle"}
-                </span>
-              </div>
-              <h3 style={{ fontFamily: T.serif, fontSize: 27, fontWeight: 400, margin: "12px 0 0" }}>{a.name}</h3>
-              <p style={{ fontSize: 13.5, color: T.soft, lineHeight: 1.6, marginTop: 8 }}>{a.does}</p>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 14, paddingTop: 12, borderTop: `1px solid ${T.line}` }}>
-                <span style={{ fontFamily: T.serif, fontSize: 32, color: a.kc || T.ink }}>{a.kpi}</span>
-                <span style={{ fontSize: 12.5, color: T.faint }}>{a.kl}</span>
-                {run && <span style={{ marginLeft: "auto", fontSize: 13.5, fontWeight: 700, color: T.blue }}>Open →</span>}
-              </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}>
+        {agents.map((a, i) => (
+          <Card key={a.n}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <Label>{a.n}</Label>
+              <span style={{ fontFamily: T.mono, fontSize: 10.5, color: T.soft }}>{a.model}</span>
+            </div>
+            <h3 style={{ fontFamily: T.serif, fontSize: 25, fontWeight: 400, margin: "12px 0 0" }}>{a.name}</h3>
+            <p style={{ fontSize: 13, color: T.soft, lineHeight: 1.6, marginTop: 8 }}>{a.does}</p>
+            <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${T.line}`, fontFamily: T.mono, fontSize: 11, color: T.blue, fontWeight: 600 }}>
+              {i < 2 ? `→ human gate → AGT-${i + 2}` : "→ Approve & Publish"}
             </div>
           </Card>
         ))}
@@ -663,17 +829,26 @@ function Overview({ product, setProduct, objective, setObjective, run, doRun, lo
 
       <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: 16, marginTop: 16 }}>
         <Card>
-          <Label>{run?.used_feedback ? "FEEDBACK LOOP" : "HOW IT WORKS"}</Label>
-          {run?.used_feedback ? (
-            <p style={{ fontSize: 14, color: T.body, lineHeight: 1.65, marginTop: 10, fontWeight: 500 }}>
-              ♻ This run consumed prior rejection feedback: “{run.used_feedback}”. The analysts
-              re-scored with it injected into their prompts — compare against the previous run.
-            </p>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <Label>AGENT SYSTEM PROMPTS</Label>
+            <Btn kind="ghost" small onClick={togglePrompts}>{showPrompts ? "Hide" : "Inspect"}</Btn>
+          </div>
+          {showPrompts && prompts ? (
+            <div style={{ marginTop: 12, maxHeight: 380, overflowY: "auto" }}>
+              {Object.entries(prompts).map(([k, v]) => (
+                <div key={k} style={{ marginBottom: 14 }}>
+                  <Label color={T.blue}>{k.toUpperCase()}</Label>
+                  <pre style={{ fontFamily: T.mono, fontSize: 10.5, color: T.body, whiteSpace: "pre-wrap", lineHeight: 1.55, background: "rgba(11,29,51,0.04)", padding: "10px 12px", borderRadius: 10, marginTop: 6 }}>
+                    {v}
+                  </pre>
+                </div>
+              ))}
+            </div>
           ) : (
             <p style={{ fontSize: 14, color: T.body, lineHeight: 1.65, marginTop: 10, fontWeight: 500 }}>
-              Screening runs three analysts concurrently, merges a cited brief, and pauses for your
-              approval. Reject with feedback and the next run adapts. Approve and the creative agent
-              generates and places assets — whose projections feed the monitor next cycle.
+              Full transparency: inspect the exact system prompt each agent runs with. In the Creative
+              Studio you can also tweak every image prompt — add art direction before generating, or
+              edit any asset's prompt and regenerate just that image.
             </p>
           )}
         </Card>
@@ -683,7 +858,7 @@ function Overview({ product, setProduct, objective, setObjective, run, doRun, lo
             9 <span style={{ fontSize: 18, color: T.soft }}>docs</span>
           </div>
           <p style={{ fontSize: 13, color: T.soft, lineHeight: 1.65, marginTop: 8 }}>
-            Sales data, channel metrics, distributor notes, brand guidelines. Analysts answer only from
+            Sales data, channel metrics, distributor notes, brand guidelines. Agents answer only from
             here — <strong style={{ color: T.ink }}>no citation, no claim.</strong>
           </p>
           <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 12 }}>
@@ -696,183 +871,37 @@ function Overview({ product, setProduct, objective, setObjective, run, doRun, lo
   );
 }
 
-/* ================= 02 STRATEGIST ================= */
-function Strategist({ run, onRerun, loading }) {
-  if (!run) return <Empty label="Run screening first (step 01)." />;
-  const strategies = run.strategist.strategies;
-  return (
-    <div>
-      <PageTitle
-        eyebrow="Step 02 · Agent 1 — Marketing Strategist"
-        title="Angles, all cited"
-        sub="Grounded in market intel and brand guidelines. Approve at step 05 and the chosen angle briefs the creative agent."
-        right={<Btn kind="ghost" small onClick={onRerun} disabled={!!loading}>Re-run</Btn>}
-      />
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        {strategies.map((s, i) => {
-          const top = i === 0;
-          return (
-            <Card key={i} style={{ display: "grid", gridTemplateColumns: "52px 1.5fr 1fr", gap: 24, alignItems: "center" }}>
-              <div style={{ fontFamily: T.serif, fontSize: 42, color: top ? T.blue : T.faint, opacity: top ? 1 : 0.4 }}>
-                {i + 1}
-              </div>
-              <div>
-                <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                  <h3 style={{ fontFamily: T.serif, fontSize: 26, fontWeight: 400, fontStyle: "italic", margin: 0, lineHeight: 1.15 }}>
-                    “{s.angle}”
-                  </h3>
-                  {top && <Pill color={T.blue} bg={T.blueSoft}>RECOMMENDED</Pill>}
-                </div>
-                <p style={{ fontSize: 14, color: T.body, lineHeight: 1.6, marginTop: 8, fontWeight: 500 }}>{s.insight}</p>
-                <div style={{ display: "flex", gap: 7, marginTop: 10, flexWrap: "wrap" }}>
-                  {s.sources.map((x) => <Cite key={x} src={x} />)}
-                </div>
-              </div>
-              <div style={{ borderLeft: `1px solid ${T.line}`, paddingLeft: 24, display: "flex", flexDirection: "column", gap: 12 }}>
-                <div>
-                  <Label>SEGMENT</Label>
-                  <div style={{ fontSize: 14, marginTop: 4, fontWeight: 600 }}>{s.target_segment}</div>
-                </div>
-                <div>
-                  <Label>CHANNEL</Label>
-                  <div style={{ fontSize: 14, marginTop: 4, fontWeight: 700, color: T.blue }}>{s.recommended_channel}</div>
-                </div>
-              </div>
-            </Card>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-/* ================= 03 SALES ANALYST ================= */
-function SalesAnalyst({ run }) {
-  if (!run) return <Empty label="Run screening first (step 01)." />;
-  const s = run.sales;
-  const laggingRegions = new Set(s.lagging.map((l) => l.region));
-  const maxCpl = Math.max(1, ...s.cpl_by_channel.map((c) => num(c.value)));
-  return (
-    <div>
-      <PageTitle
-        eyebrow="Step 03 · Agent 2 — Sales & Distribution Analyst"
-        title="Where it sells, where it lags"
-        sub="Region and channel truth from internal sales and distributor data — the ground every other agent stands on."
-      />
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 14 }}>
-        {s.where_selling.map((x, i) => {
-          const lag = laggingRegions.has(x.region);
-          return (
-            <Card key={i} style={{ padding: "18px 20px" }}>
-              <h3 style={{ fontFamily: T.serif, fontSize: 21, fontWeight: 400, margin: 0 }}>{x.region}</h3>
-              <div style={{ marginTop: 10 }}>
-                <Pill color={lag ? T.red : T.green} bg={lag ? T.redSoft : T.greenSoft}>{x.status}</Pill>
-              </div>
-              <p style={{ fontSize: 12.5, color: T.soft, marginTop: 10, lineHeight: 1.55 }}>{x.channel}</p>
-            </Card>
-          );
-        })}
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginTop: 14 }}>
-        <Card>
-          <Label>COST PER LEAD</Label>
-          <div style={{ marginTop: 16 }}>
-            {s.cpl_by_channel.map((c, i) => {
-              const v = num(c.value);
-              const cheap = v > 0 && v < 4;
-              return (
-                <div key={i} style={{ marginBottom: 14 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 6, fontWeight: 600 }}>
-                    <span>{c.channel} · {c.region}</span>
-                    <span style={{ fontFamily: T.mono, color: cheap ? T.green : T.body }}>{c.value}</span>
-                  </div>
-                  <div style={{ height: 6, background: "rgba(11,29,51,0.08)", borderRadius: 99 }}>
-                    <div style={{ width: `${(v / maxCpl) * 100}%`, height: "100%", borderRadius: 99, background: cheap ? T.green : T.faint }} />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          {s.cpl_by_channel[0]?.sources?.[0] && <Cite src={s.cpl_by_channel[0].sources[0]} />}
-        </Card>
-        <Card>
-          <Label>CONVERSION BY CHANNEL</Label>
-          <div style={{ marginTop: 8 }}>
-            {s.cvr_by_channel.map((c, i) => (
-              <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "11px 0", borderBottom: `1px solid ${T.line}`, alignItems: "baseline" }}>
-                <span style={{ fontSize: 13.5, fontWeight: 600 }}>{c.channel} · {c.region}</span>
-                <span style={{ fontFamily: T.serif, fontSize: 20, color: T.ink }}>{c.value}</span>
-              </div>
-            ))}
-          </div>
-        </Card>
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginTop: 14 }}>
-        <Card>
-          <Label color={T.amber}>LAGGING REGIONS</Label>
-          <div style={{ marginTop: 8 }}>
-            {s.lagging.map((l, i) => (
-              <div key={i} style={{ padding: "11px 0", borderBottom: `1px solid ${T.line}` }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                  <span style={{ fontSize: 14, fontWeight: 700 }}>{l.region}</span>
-                  <span style={{ display: "flex", gap: 5 }}>{l.sources.map((x) => <Cite key={x} src={x} />)}</span>
-                </div>
-                <p style={{ fontSize: 12.5, color: T.soft, marginTop: 5, lineHeight: 1.5 }}>{l.reason}</p>
-              </div>
-            ))}
-          </div>
-        </Card>
-        <Card style={{ background: "rgba(255,255,255,0.5)" }}>
-          <Label color={T.red}>KEY RISKS</Label>
-          <ul style={{ margin: "10px 0 0", paddingLeft: 18 }}>
-            {s.key_risks.map((r, i) => (
-              <li key={i} style={{ fontSize: 13.5, color: T.body, lineHeight: 1.6, marginBottom: 7, fontWeight: 500 }}>{r}</li>
-            ))}
-          </ul>
-        </Card>
-      </div>
-    </div>
-  );
-}
-
-/* ================= 04 MONITOR ================= */
-function Monitor({ run }) {
-  if (!run) return <Empty label="Run screening first (step 01)." />;
-  const m = run.monitor;
+/* ================= 02 RESEARCH (Agent 1) ================= */
+function Research({ campaign, decide, rerunResearch, loading }) {
+  if (!campaign?.research) return <Empty label="Start a campaign first (step 01)." />;
+  const r = campaign.research;
   const sev = { high: T.red, medium: T.amber, low: T.soft };
   const sevBg = { high: T.redSoft, medium: T.amberSoft, low: "rgba(11,29,51,0.05)" };
-  const high = m.alerts.filter((a) => a.severity === "high").length;
+  const approved = ["research_approved", "plan_pending", "plan_rejected", "plan_approved", "published"].includes(campaign.status);
   return (
     <div>
       <PageTitle
-        eyebrow="Step 04 · Agent 3 — Performance Monitor"
-        title="Campaign health"
-        sub="Metrics computed in code — never by the model. The agent narrates, flags breaches, and recommends what to scale or kill."
+        eyebrow="Step 02 · Agent 1 — Research & Monitor"
+        title="What's going wrong"
+        sub="Deterministic campaign math + grounded diagnosis. Approve to hand this research to Agent 2 — reject with feedback and Agent 1 re-runs with it."
+        right={!approved && <Btn kind="ghost" small onClick={rerunResearch} disabled={!!loading}>Re-run</Btn>}
       />
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
-        {[
-          { l: "Alerts", v: String(m.alerts.length) },
-          { l: "Critical", v: String(high), c: high ? T.red : T.green },
-          { l: "Corpus", v: "campaign_history.md", small: true },
-        ].map((s) => (
-          <Card key={s.l} style={{ padding: "18px 22px" }}>
-            <Label>{s.l.toUpperCase()}</Label>
-            <div style={{ fontFamily: s.small ? T.mono : T.serif, fontSize: s.small ? 13 : 40, marginTop: 6, color: s.c || T.ink }}>
-              {s.v}
-            </div>
-          </Card>
-        ))}
-      </div>
 
-      <Card style={{ marginTop: 14 }}>
+      {approved && <Stamp label="APPROVED → AGT-2" good />}
+      {campaign.used_feedback && (
+        <Banner tone="load">♻ This run consumed prior feedback: "{campaign.used_feedback}"</Banner>
+      )}
+
+      <Card>
         <Label>SUMMARY</Label>
-        <p style={{ fontFamily: T.serif, fontSize: 23, lineHeight: 1.4, marginTop: 10 }}>{m.summary}</p>
+        <p style={{ fontFamily: T.serif, fontSize: 24, lineHeight: 1.4, marginTop: 10 }}>{r.summary}</p>
       </Card>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 14 }}>
-        {m.alerts.map((a, i) => (
+      <div style={{ marginTop: 14 }}>
+        <Label color={T.red}>WHAT'S WRONG</Label>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 8 }}>
+        {r.whats_wrong.map((a, i) => (
           <Card key={i} style={{ display: "flex", gap: 20, alignItems: "flex-start", flexWrap: "wrap" }}>
             <div style={{ minWidth: 90 }}>
               <Pill color={sev[a.severity] || T.soft} bg={sevBg[a.severity] || "rgba(11,29,51,0.05)"}>
@@ -880,162 +909,248 @@ function Monitor({ run }) {
               </Pill>
             </div>
             <div style={{ flex: "1 1 320px" }}>
-              <div style={{ fontFamily: T.serif, fontSize: 20, lineHeight: 1.25 }}>{a.campaign}</div>
-              <p style={{ fontSize: 13.5, color: T.body, marginTop: 6, fontWeight: 500, lineHeight: 1.55 }}>{a.reason}</p>
+              <div style={{ fontFamily: T.serif, fontSize: 20, lineHeight: 1.25 }}>{a.issue}</div>
+              <p style={{ fontSize: 13.5, color: T.body, marginTop: 6, fontWeight: 500, lineHeight: 1.55 }}>{a.evidence}</p>
+              <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+                {a.sources.map((s) => <Cite key={s} src={s} />)}
+              </div>
             </div>
             <div style={{ flex: "1 1 220px" }}>
-              <Label>ACTION</Label>
-              <p style={{ fontSize: 13.5, color: T.ink, marginTop: 5, fontWeight: 600, lineHeight: 1.5 }}>{a.action}</p>
+              <Label>ACTION HINT</Label>
+              <p style={{ fontSize: 13.5, color: T.ink, marginTop: 5, fontWeight: 600, lineHeight: 1.5 }}>{a.action_hint}</p>
             </div>
           </Card>
         ))}
       </div>
 
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginTop: 14 }}>
+        <Card>
+          <Label color={T.amber}>WHERE IT LAGS</Label>
+          <div style={{ marginTop: 8 }}>
+            {r.lagging.map((l, i) => (
+              <div key={i} style={{ padding: "11px 0", borderBottom: `1px solid ${T.line}` }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                  <span style={{ fontSize: 14, fontWeight: 700 }}>{l.where}</span>
+                  <span style={{ display: "flex", gap: 5 }}>{l.sources.map((x) => <Cite key={x} src={x} />)}</span>
+                </div>
+                <p style={{ fontSize: 12.5, color: T.soft, marginTop: 5, lineHeight: 1.5 }}>{l.reason}</p>
+              </div>
+            ))}
+          </div>
+        </Card>
+        <Card>
+          <Label color={T.green}>WHAT'S WORKING</Label>
+          <div style={{ marginTop: 8 }}>
+            {r.whats_working.map((w, i) => (
+              <div key={i} style={{ padding: "11px 0", borderBottom: `1px solid ${T.line}` }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                  <span style={{ fontSize: 14, fontWeight: 700 }}>{w.item}</span>
+                  <span style={{ display: "flex", gap: 5 }}>{w.sources.map((x) => <Cite key={x} src={x} />)}</span>
+                </div>
+                <p style={{ fontSize: 12.5, color: T.soft, marginTop: 5, lineHeight: 1.5 }}>{w.evidence}</p>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
+
       <Card style={{ marginTop: 14, display: "flex", gap: 16, alignItems: "center", background: "rgba(255,255,255,0.75)", flexWrap: "wrap" }}>
         <Pill color={T.green} bg={T.greenSoft}>SCALE RECOMMENDATION</Pill>
         <p style={{ fontFamily: T.serif, fontSize: 22, margin: 0, flex: 1, minWidth: 300, lineHeight: 1.4 }}>
-          {m.scale_recommendation}
+          {r.scale_recommendation}
         </p>
       </Card>
+
+      <Gate
+        stage="research"
+        campaign={campaign}
+        decide={decide}
+        rerun={rerunResearch}
+        loading={loading}
+        approveLabel="Approve — hand research to Agent 2 →"
+      />
     </div>
   );
 }
 
-/* ================= 05 APPROVAL GATE ================= */
-function Gate({ run, brief, decision, decide, doRun, loading }) {
-  const [fb, setFb] = useState("");
-  if (!brief) return <Empty label="Run screening first (step 01)." />;
-  const status = decision || (brief.status !== "pending" ? brief.status.replace("d", "") : null);
-  const says = run
-    ? [
-        { a: "Strategist", says: run.strategist.strategies[0]?.angle },
-        { a: "Sales Analyst", says: run.sales.key_risks[0] || run.sales.lagging[0]?.reason },
-        { a: "Monitor", says: run.monitor.scale_recommendation },
-      ]
-    : [];
+/* ================= 03 PLAN (Agent 2) ================= */
+function Plan({ campaign, decide, runPlan, loading }) {
+  if (!campaign?.research) return <Empty label="Start a campaign first (step 01)." />;
+  if (!campaign?.plan) {
+    const ready = campaign.status === "research_approved";
+    return (
+      <div>
+        <PageTitle
+          eyebrow="Step 03 · Agent 2 — Strategy Planner"
+          title="Awaiting the handoff"
+          sub={ready ? "Research is approved — run Agent 2 to build the plan." : "Approve the research at step 02 first; it hands off to Agent 2 automatically."}
+        />
+        {ready ? (
+          <Btn onClick={runPlan} disabled={!!loading}>{loading ? "Planning…" : "Run Agent 2 — build the plan"}</Btn>
+        ) : (
+          <Empty label="Approve Agent 1's research first (step 02)." />
+        )}
+      </div>
+    );
+  }
+  const p = campaign.plan;
+  const approved = ["plan_approved", "published"].includes(campaign.status);
   return (
     <div>
       <PageTitle
-        eyebrow="Step 05 · Human in the loop"
-        title={<>The <em style={{ color: T.blue }}>one</em> decision</>}
-        sub="Three agents screened the market. Approve to hand this brief to the creative agent. Reject with feedback and the screening re-runs — your feedback goes into their prompts."
+        eyebrow="Step 03 · Agent 2 — Strategy Planner"
+        title="The plan"
+        sub="Built on the approved research. Approve to hand this plan to Agent 3 as its creative brief — reject with feedback and Agent 2 re-plans."
       />
 
-      {status && <Stamp approved={decision === "approve" || brief.status === "approved"} />}
-      {run?.used_feedback && (
-        <Banner tone="load">♻ This run consumed prior feedback: “{run.used_feedback}”</Banner>
+      {approved && <Stamp label="APPROVED → AGT-3" good />}
+      {campaign.used_feedback && (
+        <Banner tone="load">♻ This plan consumed prior feedback: "{campaign.used_feedback}"</Banner>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 16, marginTop: 8 }}>
-        <Card style={{ padding: 36 }}>
-          <Label>BRIEF-{String(brief.id).padStart(3, "0")} · COMBINED FINDINGS · {brief.status.toUpperCase()}</Label>
-          <p style={{ fontFamily: T.serif, fontSize: 29, lineHeight: 1.35, marginTop: 16 }}>
-            {brief.executive_summary}
-          </p>
-
-          {decision !== "reject" && brief.status === "pending" && (
-            <>
-              <div style={{ display: "flex", gap: 14, marginTop: 28, alignItems: "center", flexWrap: "wrap" }}>
-                <Btn kind="approve" onClick={() => decide("approve")}>Approve — run creative agent</Btn>
-                <Btn
-                  kind="danger"
-                  onClick={() => {
-                    if (!fb.trim()) {
-                      alert("Reject requires feedback.");
-                      return;
-                    }
-                    decide("reject", fb);
-                  }}
-                >
-                  Reject with feedback
-                </Btn>
-              </div>
-              <textarea
-                value={fb}
-                onChange={(e) => setFb(e.target.value)}
-                placeholder="Rejection feedback (required) — e.g. Too NA-centric; prioritize India quick-commerce, cut vet-referral emphasis."
-                style={{ ...inputStyle, marginTop: 16, height: 80, resize: "vertical", fontFamily: T.sans }}
-              />
-            </>
-          )}
-
-          {decision === "reject" && (
-            <div style={{ marginTop: 24 }}>
-              <p style={{ fontSize: 13.5, color: T.soft, marginBottom: 14 }}>
-                Feedback stored. Re-run screening to see the analysts adapt.
-              </p>
-              <Btn onClick={doRun} disabled={!!loading}>
-                {loading ? "Re-running…" : "♻ Re-run screening with feedback"}
-              </Btn>
+      <Card style={{ padding: 32 }}>
+        <Label>CAMPAIGN ANGLE · AGENT 3'S CREATIVE DIRECTION</Label>
+        <h2 style={{ fontFamily: T.serif, fontSize: 36, fontWeight: 400, fontStyle: "italic", margin: "12px 0 0", lineHeight: 1.15 }}>
+          "{p.campaign_angle}"
+        </h2>
+        <p style={{ fontSize: 14.5, color: T.body, lineHeight: 1.65, marginTop: 14, fontWeight: 500 }}>{p.plan_summary}</p>
+        <div style={{ display: "flex", gap: 20, marginTop: 16, flexWrap: "wrap", alignItems: "center" }}>
+          <div>
+            <Label>TARGET SEGMENT</Label>
+            <div style={{ fontSize: 14, marginTop: 4, fontWeight: 600 }}>{p.target_segment}</div>
+          </div>
+          <div>
+            <Label>CHANNELS</Label>
+            <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
+              {p.recommended_channels.map((c) => (
+                <Pill key={c} color={T.blue} bg={T.blueSoft}>{c}</Pill>
+              ))}
             </div>
-          )}
-        </Card>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {says.map((x) => (
-            <Card key={x.a} style={{ padding: "16px 20px" }}>
-              <Label>{x.a.toUpperCase()} SAYS</Label>
-              <p style={{ fontSize: 13.5, lineHeight: 1.6, marginTop: 7, fontWeight: 600, color: T.body }}>
-                {x.says || "—"}
-              </p>
-            </Card>
-          ))}
+          </div>
         </div>
-      </div>
+      </Card>
+
+      <Card style={{ marginTop: 14, padding: 0, overflow: "hidden" }}>
+        <div style={{ padding: "15px 22px", borderBottom: `1px solid ${T.line}` }}>
+          <Label>MARKETING CHANGES · GROUNDED IN THE METRICS</Label>
+        </div>
+        {p.marketing_changes.map((m, i) => (
+          <div key={i} style={{ display: "flex", gap: 22, padding: "14px 22px", borderBottom: `1px solid ${T.line}`, alignItems: "baseline", flexWrap: "wrap" }}>
+            <span style={{ fontWeight: 700, flex: "1 1 260px", fontSize: 14, lineHeight: 1.45 }}>{m.change}</span>
+            <span style={{ fontFamily: T.mono, fontSize: 12, color: T.blue, flex: "0 1 200px" }}>{m.basis_metric}</span>
+            <span style={{ fontSize: 12.5, color: T.soft, flex: "1 1 220px", fontWeight: 500 }}>{m.expected_impact}</span>
+            <span style={{ display: "flex", gap: 5 }}>{m.sources.map((s) => <Cite key={s} src={s} />)}</span>
+          </div>
+        ))}
+      </Card>
+
+      <Card style={{ marginTop: 14 }}>
+        <Label>NEXT STEPS</Label>
+        <ol style={{ margin: "10px 0 0", paddingLeft: 22 }}>
+          {p.next_steps.map((s, i) => (
+            <li key={i} style={{ fontSize: 14, color: T.body, lineHeight: 1.7, marginBottom: 7, fontWeight: 500 }}>{s}</li>
+          ))}
+        </ol>
+      </Card>
+
+      <Gate
+        stage="plan"
+        campaign={campaign}
+        decide={decide}
+        rerun={runPlan}
+        loading={loading}
+        approveLabel="Approve — hand plan to Agent 3 →"
+      />
     </div>
   );
 }
 
-function Stamp({ approved }) {
-  return (
-    <div
-      style={{
-        transform: "rotate(-6deg)",
-        display: "inline-block",
-        border: `3px solid ${approved ? T.green : T.red}`,
-        color: approved ? T.green : T.red,
-        padding: "4px 18px",
-        fontFamily: T.mono,
-        fontWeight: 700,
-        letterSpacing: 3,
-        borderRadius: 8,
-        fontSize: 22,
-        opacity: 0.9,
-        marginBottom: 12,
-      }}
-    >
-      {approved ? "APPROVED" : "KILLED"}
-    </div>
-  );
-}
-
-/* ================= 06 CREATIVE STUDIO ================= */
-function Creative({ product, brief, creative, placement, genCreative, plan, loading }) {
+/* ================= 04 CREATIVE STUDIO (Agent 3) ================= */
+function CreativeStudio({ product, campaign, creative, placement, published, genCreative, plan, doPublish, loading, refreshCost }) {
   const [skill, setSkill] = useState("/amazon");
-  const [url, setUrl] = useState(DEFAULT_URL[product] || "");
-  if (!brief) return <Empty label="Run screening first (step 01)." />;
-  if (brief.status !== "approved" && !creative)
-    return <Empty label="Approve a brief first (step 05)." />;
+  const [url, setUrl] = useState(DEFAULT_URL[campaign?.product || product] || "");
+  const [tweak, setTweak] = useState("");
+  const [ref, setRef] = useState(null); // {reference_id, url}
+  const [uploading, setUploading] = useState(false);
+
+  if (!campaign) return <Empty label="Start a campaign first (step 01)." />;
+  if (!["plan_approved", "published"].includes(campaign.status) && !creative)
+    return <Empty label="Approve Agent 2's plan first (step 03)." />;
+
+  const onRef = async (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    setUploading(true);
+    try {
+      setRef(await uploadFile("/reference", f));
+    } catch (err) {
+      alert(String(err.message || err));
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const p = creative?.profile;
   return (
     <div>
       <PageTitle
-        eyebrow="Step 06 · Agent 4 — Creative Agent"
+        eyebrow="Step 04 · Agent 3 — Creative"
         title="Creative studio"
-        sub="The approved brief is live context. Paste a product URL, pick a skill — the agent diagnoses the product, generates under brand guardrails, then plans placements."
+        sub="The approved plan is the brief. Optionally upload a reference image (faithful product renders) and add art direction — every image prompt stays editable after generation."
       />
 
-      <Card style={{ display: "flex", gap: 14, alignItems: "center", padding: "16px 24px", flexWrap: "wrap" }}>
-        <Pill color={T.green} bg={T.greenSoft}>BRIEF-{String(brief.id).padStart(3, "0")} APPROVED ✓</Pill>
-        <span style={{ fontFamily: T.mono, fontSize: 14, color: T.blue, fontWeight: 600 }}>{skill}</span>
-        <input
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          style={{ flex: "1 1 300px", fontFamily: T.mono, fontSize: 12.5, color: T.soft, background: "rgba(255,255,255,0.8)", border: `1px solid ${T.line}`, borderRadius: 11, padding: "11px 15px" }}
-        />
-        <Btn onClick={() => genCreative(url, skill)} disabled={!!loading}>
-          {loading ? "Generating…" : "Generate set"}
-        </Btn>
+      {published && <Stamp label="PUBLISHED" good />}
+
+      <Card>
+        <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
+          <Pill color={T.green} bg={T.greenSoft}>PLAN APPROVED ✓</Pill>
+          {campaign.plan && (
+            <span style={{ fontFamily: T.serif, fontSize: 15, fontStyle: "italic", color: T.body }}>
+              "{campaign.plan.campaign_angle}"
+            </span>
+          )}
+        </div>
+        <div style={{ display: "flex", gap: 12, alignItems: "center", marginTop: 14, flexWrap: "wrap" }}>
+          <span style={{ fontFamily: T.mono, fontSize: 14, color: T.blue, fontWeight: 600 }}>{skill}</span>
+          <input
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="Product URL (or manual:<pasted text>)"
+            style={{ flex: "1 1 300px", fontFamily: T.mono, fontSize: 12.5, color: T.soft, background: "rgba(255,255,255,0.8)", border: `1px solid ${T.line}`, borderRadius: 11, padding: "11px 15px" }}
+          />
+          <Btn onClick={() => genCreative(url, skill, ref?.reference_id, tweak)} disabled={!!loading}>
+            {loading ? "Generating…" : "Generate set"}
+          </Btn>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 220px", gap: 12, marginTop: 12 }}>
+          <div>
+            <Label>ART DIRECTION · OPTIONAL PROMPT TWEAK (APPENDED TO EVERY IMAGE PROMPT)</Label>
+            <input
+              value={tweak}
+              onChange={(e) => setTweak(e.target.value)}
+              placeholder='e.g. "golden-hour light, older golden retriever, warm kitchen"'
+              style={{ ...inputStyle, marginTop: 6 }}
+            />
+          </div>
+          <div>
+            <Label>REFERENCE IMAGE · OPTIONAL</Label>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 6 }}>
+              {ref ? (
+                <>
+                  <img src={ref.url} alt="reference" style={{ width: 44, height: 44, borderRadius: 8, objectFit: "cover", border: `1px solid ${T.line}` }} />
+                  <button onClick={() => setRef(null)} style={{ border: "none", background: "none", color: T.red, cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+                    remove
+                  </button>
+                </>
+              ) : (
+                <label style={{ ...inputStyle, textAlign: "center", cursor: "pointer", color: T.soft, fontWeight: 600, fontSize: 13 }}>
+                  {uploading ? "Uploading…" : "⬆ Upload product photo"}
+                  <input type="file" accept="image/png,image/jpeg" onChange={onRef} style={{ display: "none" }} />
+                </label>
+              )}
+            </div>
+          </div>
+        </div>
       </Card>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginTop: 14 }}>
@@ -1081,19 +1196,20 @@ function Creative({ product, brief, creative, placement, genCreative, plan, load
                     <span style={{ fontSize: 12.5, fontWeight: 600, textAlign: "right" }}>{v}</span>
                   </div>
                 ))}
-                <div style={{ display: "flex", gap: 6, marginTop: 12 }}>
+                <div style={{ display: "flex", gap: 6, marginTop: 12, alignItems: "center", flexWrap: "wrap" }}>
                   {p.brand_colors.map((c) => (
                     <span key={c} title={c} style={{ width: 22, height: 22, borderRadius: 6, background: c, border: `1px solid ${T.line}` }} />
                   ))}
+                  {creative.reference_used && <Pill color={T.blue} bg={T.blueSoft}>REFERENCE-FAITHFUL</Pill>}
                 </div>
               </Card>
               <Card>
                 <Pill color={T.red} bg={T.redSoft}>GUARDRAILS ACTIVE</Pill>
                 <p style={{ fontSize: 13, lineHeight: 1.65, marginTop: 10, fontWeight: 600 }}>
-                  No disease-cure claims · no “reverses aging” · no implied vet endorsement without substantiation.
+                  No disease-cure claims · no "reverses aging" · no implied vet endorsement without substantiation.
                 </p>
                 <div style={{ marginTop: 8 }}>
-                  <Cite src={product.includes("Palmolive") ? "brand_guidelines_palmolive.md" : "brand_guidelines_hills.md"} />
+                  <Cite src={(campaign.product || product).includes("Palmolive") ? "brand_guidelines_palmolive.md" : "brand_guidelines_hills.md"} />
                 </div>
               </Card>
             </div>
@@ -1101,7 +1217,7 @@ function Creative({ product, brief, creative, placement, genCreative, plan, load
             <div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                 {creative.assets.map((a) => (
-                  <AssetTile key={a.id} a={a} />
+                  <AssetTile key={a.id} a={a} onCost={refreshCost} />
                 ))}
               </div>
               <Card style={{ marginTop: 12 }}>
@@ -1124,10 +1240,10 @@ function Creative({ product, brief, creative, placement, genCreative, plan, load
             <div style={{ padding: "15px 22px", borderBottom: `1px solid ${T.line}`, display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
               <Label>PLACEMENT PLAN</Label>
               {placement ? (
-                <Label color={T.green}>PROJECTIONS FEED AGENT 3 NEXT CYCLE — LOOP CLOSED</Label>
+                <Label color={T.green}>PROJECTIONS FEED AGENT 1 NEXT CYCLE — LOOP CLOSED</Label>
               ) : (
                 <Btn small onClick={plan} disabled={!!loading}>
-                  {loading ? "Planning…" : "Run placement pass"}
+                  {loading ? "Planning…" : "Run placement + expected metrics"}
                 </Btn>
               )}
             </div>
@@ -1144,8 +1260,67 @@ function Creative({ product, brief, creative, placement, genCreative, plan, load
               ))
             ) : (
               <div style={{ padding: "22px", fontSize: 13.5, color: T.soft }}>
-                Run the placement pass to map each asset → platform → budget %, grounded in channel metrics.
+                Run the placement pass to map each asset → platform → budget %, plus expected metrics with probabilities.
               </div>
+            )}
+          </Card>
+
+          {placement?.expected_metrics?.length > 0 && (
+            <Card style={{ marginTop: 14 }}>
+              <Label>WHAT TO EXPECT · AGENT 3'S CALIBRATED PROBABILITIES (FIRST 4 WEEKS)</Label>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 14, marginTop: 14 }}>
+                {placement.expected_metrics.map((m, i) => {
+                  const pct = Math.round((m.probability || 0) * 100);
+                  const c = pct >= 70 ? T.green : pct >= 45 ? T.amber : T.red;
+                  return (
+                    <div key={i} style={{ padding: "14px 16px", borderRadius: 14, background: "rgba(255,255,255,0.7)", border: `1px solid ${T.line}` }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                        <span style={{ fontFamily: T.mono, fontSize: 11.5, fontWeight: 700, color: T.soft }}>{m.metric}</span>
+                        <span style={{ fontFamily: T.serif, fontSize: 22, color: c }}>{pct}%</span>
+                      </div>
+                      <div style={{ fontFamily: T.serif, fontSize: 19, marginTop: 4 }}>{m.expected}</div>
+                      <div style={{ height: 6, background: "rgba(11,29,51,0.08)", borderRadius: 99, marginTop: 10 }}>
+                        <div style={{ width: `${pct}%`, height: "100%", borderRadius: 99, background: c }} />
+                      </div>
+                      <p style={{ fontSize: 11.5, color: T.soft, marginTop: 8, lineHeight: 1.5 }}>{m.rationale}</p>
+                      <div style={{ display: "flex", gap: 5, marginTop: 6, flexWrap: "wrap" }}>
+                        {(m.sources || []).map((s) => <Cite key={s} src={s} />)}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+          )}
+
+          {creative.skill_used === "/bundle" && <VideoPanel creative={creative} />}
+
+          <Card style={{ marginTop: 14, display: "flex", gap: 18, alignItems: "center", flexWrap: "wrap", background: published ? T.greenSoft : "rgba(255,255,255,0.75)" }}>
+            {published ? (
+              <>
+                <Pill color="#fff" bg={T.green}>PUBLISHED ✓</Pill>
+                <div style={{ flex: 1, minWidth: 280 }}>
+                  <div style={{ fontFamily: T.serif, fontSize: 20 }}>
+                    Live{published.channels?.length ? ` on ${published.channels.join(", ")}` : ""}.
+                  </div>
+                  <p style={{ fontSize: 12.5, color: T.soft, marginTop: 4 }}>
+                    {published.note || "Recorded in DB — the ad-platform API call goes here in production."} Results feed Agent 1 next cycle.
+                  </p>
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ flex: 1, minWidth: 280 }}>
+                  <Label>FINAL GATE</Label>
+                  <div style={{ fontFamily: T.serif, fontSize: 22, marginTop: 6 }}>Ship it?</div>
+                  <p style={{ fontSize: 12.5, color: T.soft, marginTop: 4 }}>
+                    {placement ? "Placements and expected metrics are on the table." : "Tip: run the placement pass first so you publish with expectations set."}
+                  </p>
+                </div>
+                <Btn kind="approve" onClick={doPublish} disabled={!!loading}>
+                  Approve & publish →
+                </Btn>
+              </>
             )}
           </Card>
         </>
@@ -1154,18 +1329,45 @@ function Creative({ product, brief, creative, placement, genCreative, plan, load
   );
 }
 
-function AssetTile({ a }) {
-  const [show, setShow] = useState(false);
+/* asset tile with EDITABLE PROMPT + regenerate */
+function AssetTile({ a: initial, onCost }) {
+  const [a, setA] = useState(initial);
+  const [mode, setMode] = useState("closed"); // closed | view | edit
+  const [draft, setDraft] = useState(initial.prompt);
+  const [busy, setBusy] = useState(false);
+
+  const regenerate = async () => {
+    setBusy(true);
+    try {
+      const res = await api(`/assets/${a.id}/variant`, {
+        method: "POST",
+        body: JSON.stringify({ prompt: draft }),
+      });
+      setA({ ...a, id: res.id, url: `${res.url}?t=${res.id}`, prompt: res.prompt, from_cache: res.from_cache, cache_hit: res.cache_hit, cost_usd: res.cost_usd });
+      setMode("view");
+      onCost?.();
+    } catch (e) {
+      alert(String(e.message || e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div style={{ ...glass, borderRadius: 14, overflow: "hidden", padding: 0 }}>
       <div style={{ position: "relative", background: "#0B1D33" }}>
         <img
           src={a.url}
           alt={a.kind}
-          onClick={() => setShow((s) => !s)}
+          onClick={() => setMode(mode === "closed" ? "view" : "closed")}
           style={{ width: "100%", display: "block", aspectRatio: "1/1", objectFit: "cover", cursor: "pointer" }}
         />
-        {a.from_cache && (
+        {a.cache_hit && (
+          <span style={{ position: "absolute", top: 8, left: 8, background: "rgba(23,138,80,0.92)", color: "#fff", fontFamily: "monospace", fontSize: 10, padding: "2px 7px", borderRadius: 6 }}>
+            CACHE HIT · $0.00
+          </span>
+        )}
+        {a.from_cache && !a.cache_hit && (
           <span style={{ position: "absolute", top: 8, left: 8, background: "rgba(11,29,51,0.75)", color: "#E9C46A", fontFamily: "monospace", fontSize: 10, padding: "2px 7px", borderRadius: 6 }}>
             CACHED
           </span>
@@ -1177,12 +1379,139 @@ function AssetTile({ a }) {
       <div style={{ padding: "11px 15px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
           <span style={{ fontSize: 13, fontWeight: 700 }}>{a.kind}</span>
-          <span onClick={() => setShow((s) => !s)} style={{ fontFamily: T.mono, fontSize: 10.5, color: T.blue, cursor: "pointer" }}>
-            {show ? "hide" : "prompt"}
+          <span style={{ display: "flex", gap: 10 }}>
+            <span onClick={() => { setMode(mode === "edit" ? "closed" : "edit"); setDraft(a.prompt); }} style={{ fontFamily: T.mono, fontSize: 10.5, color: T.blue, cursor: "pointer", fontWeight: 700 }}>
+              {mode === "edit" ? "cancel" : "✎ edit prompt"}
+            </span>
+            <span onClick={() => setMode(mode === "view" ? "closed" : "view")} style={{ fontFamily: T.mono, fontSize: 10.5, color: T.soft, cursor: "pointer" }}>
+              {mode === "view" ? "hide" : "prompt"}
+            </span>
           </span>
         </div>
-        {show && <div style={{ fontSize: 11, color: T.soft, marginTop: 6, lineHeight: 1.5 }}>{a.prompt}</div>}
+        {mode === "view" && <div style={{ fontSize: 11, color: T.soft, marginTop: 6, lineHeight: 1.5 }}>{a.prompt}</div>}
+        {mode === "edit" && (
+          <div style={{ marginTop: 8 }}>
+            <textarea
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              style={{ ...inputStyle, fontSize: 11.5, fontFamily: T.mono, height: 110, resize: "vertical", lineHeight: 1.5 }}
+            />
+            <button
+              onClick={regenerate}
+              disabled={busy}
+              style={{ marginTop: 8, width: "100%", padding: "9px 0", borderRadius: 9, border: "none", background: T.blue, color: "#fff", fontWeight: 700, fontSize: 12.5, cursor: busy ? "wait" : "pointer", fontFamily: T.sans }}
+            >
+              {busy ? "Regenerating…" : "Regenerate with edited prompt"}
+            </button>
+          </div>
+        )}
       </div>
+    </div>
+  );
+}
+
+function VideoPanel({ creative }) {
+  const [video, setVideo] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const render = async () => {
+    setBusy(true);
+    try {
+      setVideo(await api("/video", { method: "POST", body: JSON.stringify({ creative_id: creative.creative_id }) }));
+    } catch (e) {
+      setVideo({ status: "error", error: String(e.message || e) });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Card style={{ marginTop: 14 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+        <div>
+          <Label>VIDEO · SEEDANCE T2V (OPTIONAL)</Label>
+          <p style={{ fontSize: 13, color: T.soft, marginTop: 6, lineHeight: 1.55, maxWidth: 560 }}>
+            The /bundle skill wrote a ready-to-run text-to-video prompt. Rendering is a separate,
+            explicit call — one 5s / 720p clip per creative, never triggered automatically.
+          </p>
+        </div>
+        {(!video || video.status === "error") && (
+          <Btn small onClick={render} disabled={busy}>
+            {busy ? "Rendering… (~1 min)" : "Render video via Seedance"}
+          </Btn>
+        )}
+      </div>
+
+      {video?.status === "done" && (
+        <div style={{ marginTop: 16 }}>
+          <video controls src={video.url} style={{ width: "100%", maxWidth: 640, borderRadius: 12, display: "block", background: "#0B1D33" }} />
+          <div style={{ marginTop: 10, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <Pill color={T.green} bg={T.greenSoft}>
+              {video.cached ? "CACHED · $0.00" : `RENDERED · $${(video.cost_usd || 0).toFixed(2)}`}
+            </Pill>
+            <span style={{ fontFamily: T.mono, fontSize: 11, color: T.faint }}>5s · 720p · seedance-lite</span>
+          </div>
+        </div>
+      )}
+      {video?.status === "disabled" && (
+        <div style={{ marginTop: 14 }}>
+          <Pill color={T.amber} bg={T.amberSoft}>SEEDANCE_API_KEY NOT SET — PROMPT READY</Pill>
+          <p style={{ fontFamily: T.mono, fontSize: 12, color: T.body, marginTop: 10, lineHeight: 1.6, background: "rgba(11,29,51,0.04)", padding: "12px 14px", borderRadius: 10 }}>
+            {video.prompt}
+          </p>
+        </div>
+      )}
+      {video?.status === "error" && (
+        <p style={{ marginTop: 12, fontSize: 13, color: T.red, fontFamily: T.mono }}>
+          Video failed: {video.error}
+        </p>
+      )}
+    </Card>
+  );
+}
+
+/* ================= HISTORY (below the divider) ================= */
+function History({ onOpen }) {
+  const [items, setItems] = useState(null);
+  useEffect(() => {
+    api("/campaigns").then((r) => setItems(r.campaigns)).catch(() => setItems([]));
+  }, []);
+  return (
+    <div>
+      <PageTitle
+        eyebrow="Persistent shelf · outside the numbered pipeline"
+        title="History"
+        sub="Everything you previously generated — every campaign, its stage decisions, creatives and spend. Open one to resume exactly where it left off. Survives every redeploy on the mounted volume."
+      />
+      {!items ? (
+        <Empty label="Loading…" />
+      ) : items.length === 0 ? (
+        <Empty label="No campaigns yet — start one at step 01." />
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {items.map((c) => (
+            <Card key={c.id} style={{ display: "flex", gap: 20, alignItems: "center", flexWrap: "wrap" }}>
+              <span style={{ fontFamily: T.mono, fontSize: 12, color: T.faint, minWidth: 84 }}>
+                CAMP-{String(c.id).padStart(3, "0")}
+              </span>
+              <div style={{ flex: "1 1 260px" }}>
+                <div style={{ fontFamily: T.serif, fontSize: 20, lineHeight: 1.2 }}>{c.product}</div>
+                <div style={{ fontSize: 12, color: T.soft, marginTop: 3 }}>
+                  {new Date(c.created_at).toLocaleString()} · {c.objective}
+                </div>
+              </div>
+              {statusChip(c.status)}
+              <div style={{ display: "flex", gap: 18, fontFamily: T.mono, fontSize: 11.5, color: T.soft }}>
+                <span>{c.creatives} creative{c.creatives === 1 ? "" : "s"}</span>
+                <span>{c.assets} asset{c.assets === 1 ? "" : "s"}</span>
+                <span>${c.image_spend_usd.toFixed(2)} images</span>
+              </div>
+              {c.skills.map((s) => (
+                <span key={s} style={{ fontFamily: T.mono, fontSize: 11, color: T.blue }}>{s}</span>
+              ))}
+              <Btn kind="ghost" small onClick={() => onOpen(c.id)}>Open →</Btn>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -1218,7 +1547,7 @@ function Library({ onCost }) {
   const act = async (id, kind) => {
     setBusy(id);
     try {
-      await api(`/assets/${id}/${kind}`, { method: "POST" });
+      await api(`/assets/${id}/${kind}`, { method: "POST", body: kind === "variant" ? JSON.stringify({}) : undefined });
       await load();
       onCost?.();
     } catch (e) {
@@ -1284,7 +1613,7 @@ function Library({ onCost }) {
       </div>
 
       {assets.length === 0 ? (
-        <Empty label="No assets yet — run the creative agent (step 06) to fill the shelf." />
+        <Empty label="No assets yet — run the creative agent (step 04) to fill the shelf." />
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))", gap: 14 }}>
           {assets.map((a) => (
@@ -1306,7 +1635,7 @@ function Library({ onCost }) {
                   <span style={{ fontFamily: T.mono, fontSize: 10.5, color: T.faint }}>#{a.id}</span>
                 </div>
                 <div style={{ fontFamily: T.mono, fontSize: 10.5, color: T.soft, marginTop: 5 }}>
-                  {a.run_id ? `run ${String(a.run_id).padStart(3, "0")}` : "library"} · {a.skill || "—"} · {a.brand || "—"}
+                  {a.campaign_id ? `camp ${String(a.campaign_id).padStart(3, "0")}` : "library"} · {a.skill || "—"} · {a.brand || "—"}
                 </div>
                 <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
                   <button onClick={() => act(a.id, "reuse")} disabled={busy === a.id} style={miniBtn(false)}>

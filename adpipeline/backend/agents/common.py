@@ -1,16 +1,25 @@
-"""Shared agent helpers: context formatting, citation grounding, validated calls."""
+"""Shared agent helpers: context formatting, citation grounding, validated calls.
+
+All chat goes through llm.router (Gemini free tier, gpt-4o-mini lifeline) —
+agents name a task, never a provider.
+"""
 import json
 from typing import List, Type
 
 from pydantic import BaseModel, ValidationError
 
-from llm import openai_client
+from llm import router
 
 GROUNDING_RULE = (
-    "You are a marketing analyst. Answer ONLY from the retrieved context below. "
-    "Do not invent facts. Every claim you make MUST cite its source filename in a "
-    "`sources` field (or inline as [src: filename]) using ONLY the filenames shown. "
-    "If the context does not support a claim, omit it. Return JSON only."
+    "GROUNDING RULES (non-negotiable):\n"
+    "1. Answer ONLY from the retrieved context blocks below. Never invent facts, "
+    "figures, regions, channels, or campaign names that are not in the context.\n"
+    "2. Every claim MUST cite its source filename in a `sources` field (or inline "
+    "as [src: filename]) using ONLY the filenames shown in the context tags.\n"
+    "3. Copy numbers (CPL, CVR, ROAS, %, $) VERBATIM from the context — never "
+    "round, estimate, or recompute them.\n"
+    "4. If the context does not support a claim, omit the claim entirely.\n"
+    "5. Return a single JSON object only — no markdown, no prose outside JSON."
 )
 
 
@@ -38,16 +47,18 @@ def feedback_block(feedback: str) -> str:
     if not feedback:
         return ""
     return (
-        "\n\n## PRIOR HUMAN FEEDBACK (a previous brief was REJECTED). "
-        "You MUST address this feedback and change your output accordingly:\n"
+        "\n\n## PRIOR HUMAN FEEDBACK (a previous brief was REJECTED)\n"
+        "The human approver rejected the last brief for the reason below. This "
+        "feedback OVERRIDES your default emphasis — visibly change your output to "
+        "address it, and do not repeat the rejected direction:\n"
         f"{feedback}\n"
     )
 
 
-def call_validated(model: str, system: str, user: str, task: str,
+def call_validated(task: str, system: str, user: str,
                    schema: Type[BaseModel], temperature: float = 0.3) -> BaseModel:
-    """chat_json + Pydantic validation. One retry with the schema on validation error."""
-    data = openai_client.chat_json(model, system, user, task, temperature)
+    """router.chat_json + Pydantic validation. One retry with the schema on error."""
+    data = router.chat_json(task, system, user, temperature)
     try:
         return schema.model_validate(data)
     except ValidationError as e:
@@ -56,5 +67,5 @@ def call_validated(model: str, system: str, user: str, task: str,
             f"Return JSON matching EXACTLY this JSON Schema:\n"
             f"{json.dumps(schema.model_json_schema())}"
         )
-        data = openai_client.chat_json(model, system, fix_user, task + ":schema_retry", 0)
+        data = router.chat_json(task, system, fix_user, 0)
         return schema.model_validate(data)

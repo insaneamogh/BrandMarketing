@@ -12,7 +12,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from config import DEMO_MODE
-from llm import openai_client
+from llm import router
 from schemas import ProductProfile
 
 _UA = {"User-Agent": "Mozilla/5.0 (compatible; AdPipelineBot/1.0)"}
@@ -115,18 +115,23 @@ def diagnose(url: str) -> ProductProfile:
 
 def _vision_profile(page_text: str, image_urls: list) -> ProductProfile:
     system = (
-        "You are a product analyst. From the page text and product images, extract a "
-        "structured ProductProfile. Return JSON only."
+        "You are the CREATIVE agent's product analyst in a CPG marketing pipeline. "
+        "From scraped page data and product images, extract a faithful, structured "
+        "ProductProfile that downstream image prompts will be built from. Describe "
+        "only what the page/images actually show — never invent claims the brand "
+        "does not make. Return a single JSON object only."
     )
     user = (
         f"PAGE DATA:\n{page_text}\n\n"
         "Return JSON:\n"
         '{"name": str, "category": str, "key_claims": [str], '
         '"pack_description": str, "brand_colors": [hex or name], "price_tier": str}\n'
+        "pack_description: concrete visual description of the physical pack "
+        "(shape, colors, imagery) so an image model can render it accurately.\n"
         "brand_colors: infer from the pack. price_tier one of: value|mass-premium|premium|prestige."
     )
     if image_urls:
-        data = openai_client.vision_json("gpt-4o", system, user, image_urls, "vision")
+        data = router.vision_json("vision", system, user, image_urls)
     else:
-        data = openai_client.chat_json("gpt-4o", system, user, "vision", 0.2)
+        data = router.chat_json("vision", system, user, 0.2)
     return ProductProfile.model_validate(data)

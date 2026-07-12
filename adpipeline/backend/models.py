@@ -1,4 +1,15 @@
-"""SQLAlchemy models: Run, Brief, Decision, Asset, Feedback, LLMCall."""
+"""SQLAlchemy models for the staged handoff pipeline.
+
+Campaign lifecycle (one row per campaign, statuses gate the handoffs):
+    research_pending  -> Agent 1 output awaiting the human
+    research_approved -> research handed off to Agent 2
+    plan_pending      -> Agent 2 output awaiting the human
+    plan_approved     -> plan handed off to Agent 3 (creative unlocked)
+    published         -> human clicked Approve & Publish on a creative
+
+NOTE: this schema replaced the old Run/Brief flow. If you have an old local
+DATA_DIR, delete it (adpipeline/data/) — the POC ships no migrations.
+"""
 import datetime as dt
 
 from sqlalchemy import (
@@ -9,7 +20,9 @@ from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 from config import DB_URL
 
 Base = declarative_base()
-engine = create_engine(DB_URL, connect_args={"check_same_thread": False})
+# check_same_thread is SQLite-only; passing it to Postgres (Option B) would fail.
+_connect_args = {"check_same_thread": False} if DB_URL.startswith("sqlite") else {}
+engine = create_engine(DB_URL, connect_args=_connect_args)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 
@@ -17,44 +30,38 @@ def _now():
     return dt.datetime.utcnow()
 
 
-class Run(Base):
-    __tablename__ = "runs"
+class Campaign(Base):
+    __tablename__ = "campaigns"
     id = Column(Integer, primary_key=True)
     product = Column(String, nullable=False)
     objective = Column(Text, nullable=False)
-    status = Column(String, default="running")   # running|complete|error
+    status = Column(String, default="research_pending")
+    research_json = Column(Text)                  # Agent 1 output (ResearchOutput)
+    plan_json = Column(Text)                      # Agent 2 output (PlanOutput)
     created_at = Column(DateTime, default=_now)
-    strategist_json = Column(Text)               # raw agent outputs (JSON strings)
-    sales_json = Column(Text)
-    monitor_json = Column(Text)
-    briefs = relationship("Brief", back_populates="run")
+    updated_at = Column(DateTime, default=_now, onupdate=_now)
+    decisions = relationship("StageDecision", back_populates="campaign")
+    creatives = relationship("Creative", back_populates="campaign")
 
 
-class Brief(Base):
-    __tablename__ = "briefs"
+class StageDecision(Base):
+    """Every human approve/reject at a gate — the audit trail of the handoffs."""
+    __tablename__ = "stage_decisions"
     id = Column(Integer, primary_key=True)
-    run_id = Column(Integer, ForeignKey("runs.id"))
-    status = Column(String, default="pending")   # pending|approved|rejected
-    executive_summary = Column(Text)
-    body_json = Column(Text)                     # merged brief JSON
-    created_at = Column(DateTime, default=_now)
-    run = relationship("Run", back_populates="briefs")
-
-
-class Decision(Base):
-    __tablename__ = "decisions"
-    id = Column(Integer, primary_key=True)
-    brief_id = Column(Integer, ForeignKey("briefs.id"))
-    action = Column(String)                       # approve|reject
+    campaign_id = Column(Integer, ForeignKey("campaigns.id"))
+    stage = Column(String)                        # research|plan|publish
+    action = Column(String)                       # approve|reject|publish
     feedback = Column(Text)
     created_at = Column(DateTime, default=_now)
+    campaign = relationship("Campaign", back_populates="decisions")
 
 
 class Feedback(Base):
-    """Rejection feedback queued to inject into the next run's analyst prompts."""
+    """Rejection feedback queued per campaign+stage, injected into the re-run."""
     __tablename__ = "feedback"
     id = Column(Integer, primary_key=True)
-    product = Column(String)
+    campaign_id = Column(Integer)
+    stage = Column(String)                        # research|plan
     text = Column(Text)
     consumed = Column(Integer, default=0)         # 0=pending, 1=used in a run
     created_at = Column(DateTime, default=_now)
@@ -63,13 +70,19 @@ class Feedback(Base):
 class Creative(Base):
     __tablename__ = "creatives"
     id = Column(Integer, primary_key=True)
-    brief_id = Column(Integer, ForeignKey("briefs.id"))
+    campaign_id = Column(Integer, ForeignKey("campaigns.id"))
     url = Column(String)
     skill = Column(String)
+    reference_path = Column(String)               # uploaded reference image (optional)
+    prompt_tweak = Column(Text)                   # user art direction appended to prompts
     profile_json = Column(Text)                   # ProductProfile
     copy_json = Column(Text)                      # copy blocks
-    placement_json = Column(Text)                 # placement plan
+    placement_json = Column(Text)                 # placement plan + expected metrics
+    video_json = Column(Text)                     # Seedance video result / prompt
+    published = Column(Integer, default=0)
+    published_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=_now)
+    campaign = relationship("Campaign", back_populates="creatives")
     assets = relationship("Asset", back_populates="creative")
 
 
@@ -77,12 +90,12 @@ class Asset(Base):
     __tablename__ = "assets"
     id = Column(Integer, primary_key=True)
     creative_id = Column(Integer, ForeignKey("creatives.id"), nullable=True)  # null = library-origin
-    run_id = Column(Integer, nullable=True)
+    campaign_id = Column(Integer, nullable=True)
     brand = Column(String)                        # hills|palmolive (for library filters)
     skill = Column(String)                        # /amazon /meta ... (for library filters)
     kind = Column(String)                         # packshot|lifestyle|infographic|...
     prompt = Column(Text)
-    prompt_hash = Column(String, index=True)      # sha256(prompt|aspect|quality) — cache key
+    prompt_hash = Column(String, index=True)      # sha256(prompt|aspect|quality|ref) — cache key
     aspect = Column(String)
     quality = Column(String)                      # low|medium|high
     path = Column(String)                         # file path under ASSETS_DIR or cache/
@@ -95,10 +108,10 @@ class Asset(Base):
 
 
 class LLMCall(Base):
-    """One row per LLM/image call for the cost readout."""
+    """One row per LLM/image/video call for the cost readout."""
     __tablename__ = "llm_calls"
     id = Column(Integer, primary_key=True)
-    run_id = Column(Integer, nullable=True)
+    campaign_id = Column(Integer, nullable=True)
     model = Column(String)
     task = Column(String)
     tokens_in = Column(Integer, default=0)
