@@ -2,10 +2,11 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 import orchestrator
-from config import DEMO_MODE
+from config import DEMO_MODE, FRONTEND_DIST
 from models import (
     Asset, Brief, Creative, Decision, Feedback, SessionLocal, init_db,
 )
@@ -102,3 +103,38 @@ def get_asset(asset_id: int):
 @app.get("/cost")
 def cost():
     return orchestrator.cost_summary()
+
+
+# ---------------- Asset Library ----------------
+@app.get("/library")
+def library(brand: str | None = None, skill: str | None = None,
+            cache_only: bool = False):
+    return orchestrator.library_list(brand, skill, cache_only)
+
+
+@app.get("/library/stats")
+def library_stats():
+    return orchestrator.library_stats()
+
+
+@app.post("/assets/{asset_id}/reuse")
+def reuse(asset_id: int):
+    try:
+        return orchestrator.reuse_asset(asset_id)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+
+
+@app.post("/assets/{asset_id}/variant")
+async def variant(asset_id: int):
+    try:
+        return await orchestrator.variant_asset(asset_id)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+
+
+# ---------------- Serve built React bundle (single-service deploy) ----------
+# Mounted LAST so it never shadows the API routes above. Enabled only when a
+# production build exists (frontend/dist), e.g. on Railway.
+if FRONTEND_DIST.exists():
+    app.mount("/", StaticFiles(directory=str(FRONTEND_DIST), html=True), name="spa")

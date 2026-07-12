@@ -131,14 +131,20 @@ async def run_creative(brief_id: int, url: str, skill: str) -> dict:
             db.commit()
             db.refresh(creative)
 
+            brand = _brand_key(profile)
             asset_rows = await asyncio.to_thread(
-                creative_agent.generate_assets, profile, skill_def, creative.id)
+                creative_agent.generate_assets, profile, skill_def, creative.id,
+                _cache_lookup)
 
             assets_out = []
             for a in asset_rows:
-                rec = Asset(creative_id=creative.id, kind=a["kind"], prompt=a["prompt"],
-                            aspect=a["aspect"], path=a["path"],
-                            from_cache=1 if a["from_cache"] else 0)
+                rec = Asset(
+                    creative_id=creative.id, run_id=run.id, brand=brand, skill=skill,
+                    kind=a["kind"], prompt=a["prompt"], prompt_hash=a["prompt_hash"],
+                    aspect=a["aspect"], quality=a["quality"], path=a["path"],
+                    from_cache=1 if a["from_cache"] else 0,
+                    cache_hit=1 if a["cache_hit"] else 0,
+                    origin=a["origin"], cost_usd=a["cost_usd"])
                 db.add(rec)
                 db.commit()
                 db.refresh(rec)
@@ -173,6 +179,123 @@ async def run_placement(creative_id: int) -> dict:
         creative.placement_json = plan.model_dump_json()
         db.commit()
         return plan.model_dump()
+    finally:
+        db.close()
+
+
+# ---------------- library ----------------
+def _brand_key(profile: ProductProfile) -> str:
+    t = (profile.name + profile.category).lower()
+    return "palmolive" if any(k in t for k in ("palmolive", "skin", "soap", "shower")) else "hills"
+
+
+def _cache_lookup(prompt_hash: str):
+    """Return the on-disk path of a prior asset with this exact prompt hash, or None."""
+    db = SessionLocal()
+    try:
+        row = (db.query(Asset)
+               .filter(Asset.prompt_hash == prompt_hash, Asset.cache_hit == 0,
+                       Asset.from_cache == 0)
+               .order_by(Asset.id.asc()).first())
+        return row.path if row and Path(row.path).exists() else None
+    finally:
+        db.close()
+
+
+def _asset_dto(a: Asset) -> dict:
+    return {
+        "id": a.id, "url": f"/assets/{a.id}", "kind": a.kind, "brand": a.brand,
+        "skill": a.skill, "quality": a.quality, "aspect": a.aspect,
+        "run_id": a.run_id, "creative_id": a.creative_id, "prompt": a.prompt,
+        "from_cache": bool(a.from_cache), "cache_hit": bool(a.cache_hit),
+        "origin": a.origin, "cost_usd": round(a.cost_usd or 0.0, 3),
+    }
+
+
+def library_list(brand=None, skill=None, cache_only=False) -> dict:
+    db = SessionLocal()
+    try:
+        q = db.query(Asset)
+        if brand:
+            q = q.filter(Asset.brand == brand)
+        if skill:
+            q = q.filter(Asset.skill == skill)
+        if cache_only:
+            q = q.filter(Asset.cache_hit == 1)
+        rows = q.order_by(Asset.id.desc()).all()
+        return {"assets": [_asset_dto(a) for a in rows]}
+    finally:
+        db.close()
+
+
+def library_stats() -> dict:
+    db = SessionLocal()
+    try:
+        rows = db.query(Asset).all()
+        spend = round(sum(a.cost_usd or 0.0 for a in rows), 3)
+        hits = sum(1 for a in rows if a.cache_hit)
+        # dollars saved = tier cost that a cache hit would otherwise have paid
+        from config import tier_cost
+        saved = round(sum(tier_cost(a.quality) for a in rows if a.cache_hit), 3)
+        return {
+            "assets_stored": len(rows),
+            "image_spend_usd": spend,
+            "cache_hits": hits,
+            "dollars_saved_usd": saved,
+        }
+    finally:
+        db.close()
+
+
+def reuse_asset(asset_id: int) -> dict:
+    """Pull an existing asset into a fresh library row (same file, $0, origin=reuse)."""
+    db = SessionLocal()
+    try:
+        src = db.get(Asset, asset_id)
+        if not src:
+            raise ValueError("asset not found")
+        dup = Asset(
+            creative_id=None, run_id=src.run_id, brand=src.brand, skill=src.skill,
+            kind=src.kind, prompt=src.prompt, prompt_hash=src.prompt_hash,
+            aspect=src.aspect, quality=src.quality, path=src.path,
+            from_cache=0, cache_hit=1, origin="reuse", cost_usd=0.0)
+        db.add(dup)
+        db.commit()
+        db.refresh(dup)
+        return _asset_dto(dup)
+    finally:
+        db.close()
+
+
+async def variant_asset(asset_id: int) -> dict:
+    """Re-render an asset's prompt against the current brief context.
+
+    Goes through the prompt-hash cache: an identical prompt/quality is a $0 hit;
+    a genuine re-render pays the tier cost and is logged.
+    """
+    db = SessionLocal()
+    try:
+        src = db.get(Asset, asset_id)
+        if not src:
+            raise ValueError("asset not found")
+        token = cost.current_run_id.set(src.run_id)
+        try:
+            rec = await asyncio.to_thread(
+                creative_agent.render_one, src.prompt, src.aspect, src.kind, 0,
+                _cache_lookup)
+        finally:
+            cost.current_run_id.reset(token)
+        dup = Asset(
+            creative_id=None, run_id=src.run_id, brand=src.brand, skill=src.skill,
+            kind=rec["kind"], prompt=rec["prompt"], prompt_hash=rec["prompt_hash"],
+            aspect=rec["aspect"], quality=rec["quality"], path=rec["path"],
+            from_cache=1 if rec["from_cache"] else 0,
+            cache_hit=1 if rec["cache_hit"] else 0,
+            origin="variant", cost_usd=rec["cost_usd"])
+        db.add(dup)
+        db.commit()
+        db.refresh(dup)
+        return _asset_dto(dup)
     finally:
         db.close()
 

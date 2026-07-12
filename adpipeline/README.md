@@ -59,8 +59,15 @@ Open http://localhost:5173.
 OPENAI_API_KEY=            # required (text + embeddings + images)
 GOOGLE_API_KEY=            # optional (Gemini search grounding)
 DEMO_MODE=true             # image gen falls back to /cache on any API failure or cap
-MAX_IMAGE_CALLS_PER_RUN=6  # hard cap on gpt-image-1 calls per creative run
+MAX_IMAGE_CALLS_PER_RUN=6  # hard cap on image calls per creative run
+DATA_DIR=                  # persistent dir (Railway Volume, e.g. /data); local default: adpipeline/data
+IMAGE_MODEL=gpt-image-1    # env-overridable image model id
+GEMINI_MODEL=gemini-2.0-flash
+DATABASE_URL=              # optional: Postgres URL (Option B) instead of SQLite
 ```
+
+All persistent state (SQLite DB, Chroma index, generated/reused images) lives under
+`DATA_DIR`. Locally it defaults to `adpipeline/data/` (gitignored).
 
 ## Demo script (< 5 min, < $1 per full run)
 
@@ -76,6 +83,27 @@ MAX_IMAGE_CALLS_PER_RUN=6  # hard cap on gpt-image-1 calls per creative run
 5. **Placement** — **Run placement pass**: asset → platform → format → budget% table,
    grounded in `channel_metrics.md`. Footer notes the projections feed Agent 3 next cycle.
 6. Point at the sidebar **Run cost** ($X.XX) — logged per LLM/image call in SQLite.
+7. **Asset Library** (sidebar, below the divider) — the persistent shelf. Four
+   stats (assets, image spend, cache hits, dollars saved), brand/skill/cache-hit
+   filters, and a grid where every asset shows its exact cost. Point at a green
+   **CACHE HIT · $0.00** badge: *"the system never pays twice for the same prompt."*
+   **Reuse** pulls an asset onto the shelf; **Variant** re-renders its prompt.
+
+## Deploy (Railway)
+
+**Railway's filesystem is ephemeral** — every deploy wipes the container disk. Fix:
+
+1. Add a Railway **Volume**, mount at `/data`, set `DATA_DIR=/data`. SQLite, Chroma,
+   and images persist there (config-driven; nothing hardcoded).
+2. `nixpacks.toml` builds the React bundle and FastAPI serves it — **one service,
+   one URL, no CORS**. Start binds `$PORT`.
+3. Set env vars in the dashboard (`OPENAI_API_KEY`, `GOOGLE_API_KEY`, `DATA_DIR`,
+   `MAX_IMAGE_CALLS_PER_RUN`, `DEMO_MODE`). Never commit `.env`.
+4. Set a Railway **usage alert**; `MAX_IMAGE_CALLS_PER_RUN` caps per-run spend.
+
+Scaling answer: move metadata to Railway Postgres (`DATABASE_URL`) and blobs to
+Cloudflare R2 / S3 (store only the URL). Build the Volume version; describe the
+Postgres+object-storage version. See `PROJECT_SPEC.md` for the full write-up.
 
 ## Guardrails
 
@@ -99,8 +127,12 @@ GET  /briefs/{id}
 POST /briefs/{id}/decision   {action: approve|reject, feedback?}
 POST /creative               {brief_id, url, skill} -> ProductProfile + assets + copy
 POST /placement              {creative_id} -> placement plan
-GET  /assets/{id}            serve generated/cached image
+GET  /assets/{id}            serve generated/cached image (reads from DATA_DIR)
 GET  /cost                   cost readout by model
+GET  /library?brand=&skill=&cache_only=   list assets
+GET  /library/stats          assets_stored, image_spend, cache_hits, dollars_saved
+POST /assets/{id}/reuse      duplicate an asset onto the shelf ($0)
+POST /assets/{id}/variant    re-render the stored prompt (cache-aware)
 GET  /health
 ```
 

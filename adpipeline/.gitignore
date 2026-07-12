@@ -3,12 +3,10 @@ __pycache__/
 *.pyc
 .venv/
 venv/
-backend/adpipeline.db
-backend/rag/.chroma/
+# persistent data dir (Railway Volume mount target locally): db, chroma, assets
+data/
 # env
 .env
 # node
 frontend/node_modules/
 frontend/dist/
-# generated demo assets (cache placeholders are committed; generated ones are not)
-cache/generated/

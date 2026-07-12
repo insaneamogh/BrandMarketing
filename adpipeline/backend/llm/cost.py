@@ -30,5 +30,7 @@ def log_call(model, task, tokens_in=0, tokens_out=0, latency_ms=0, cost_usd=None
     return cost_usd
 
 
-def log_image(model, task, n=1):
-    return log_call(model, task, cost_usd=IMAGE_COST * n)
+def log_image(model, task, n=1, cost_usd=None):
+    if cost_usd is None:
+        cost_usd = IMAGE_COST * n
+    return log_call(model, task, cost_usd=cost_usd)

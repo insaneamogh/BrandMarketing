@@ -76,12 +76,21 @@ class Creative(Base):
 class Asset(Base):
     __tablename__ = "assets"
     id = Column(Integer, primary_key=True)
-    creative_id = Column(Integer, ForeignKey("creatives.id"))
+    creative_id = Column(Integer, ForeignKey("creatives.id"), nullable=True)  # null = library-origin
+    run_id = Column(Integer, nullable=True)
+    brand = Column(String)                        # hills|palmolive (for library filters)
+    skill = Column(String)                        # /amazon /meta ... (for library filters)
     kind = Column(String)                         # packshot|lifestyle|infographic|...
     prompt = Column(Text)
+    prompt_hash = Column(String, index=True)      # sha256(prompt|aspect|quality) — cache key
     aspect = Column(String)
-    path = Column(String)                         # file path under cache/ or generated/
-    from_cache = Column(Integer, default=0)
+    quality = Column(String)                      # low|medium|high
+    path = Column(String)                         # file path under ASSETS_DIR or cache/
+    from_cache = Column(Integer, default=0)       # served from a placeholder (demo fallback)
+    cache_hit = Column(Integer, default=0)        # prompt seen before -> reused, $0
+    origin = Column(String, default="generated")  # generated|cache_hit|reuse|variant|fallback
+    cost_usd = Column(Float, default=0.0)
+    created_at = Column(DateTime, default=_now)
     creative = relationship("Creative", back_populates="assets")
 
 

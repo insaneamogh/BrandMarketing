@@ -82,14 +82,20 @@ def embed(texts: List[str]) -> List[List[float]]:
     return [d.embedding for d in resp.data]
 
 
-def generate_image(prompt: str, aspect: str = "1:1", task: str = "image") -> bytes:
-    """gpt-image-1. Returns PNG bytes. Raises on failure (caller handles cache)."""
+def generate_image(prompt: str, aspect: str = "1:1", quality: str = "medium",
+                   task: str = "image") -> bytes:
+    """Image gen. Returns PNG bytes. Raises on failure (caller handles cache).
+
+    Cost is logged at the requested quality tier; a repeat prompt never reaches
+    here (the caller's prompt-hash cache short-circuits it at $0).
+    """
+    from config import tier_cost
     size = {"1:1": "1024x1024", "4:5": "1024x1280",
             "9:16": "1024x1536", "16:9": "1536x1024"}.get(aspect, "1024x1024")
     resp = client().images.generate(
-        model=MODEL_IMAGE, prompt=prompt, size=size, n=1,
+        model=MODEL_IMAGE, prompt=prompt, size=size, n=1, quality=quality,
     )
-    cost.log_image(MODEL_IMAGE, task)
+    cost.log_image(MODEL_IMAGE, f"{task}:{quality}", cost_usd=tier_cost(quality))
     return base64.b64decode(resp.data[0].b64_json)
 
 

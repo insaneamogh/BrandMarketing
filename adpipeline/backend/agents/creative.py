@@ -6,20 +6,27 @@
   cap is hit, DEMO_MODE serves a cached fallback from /cache.
 - Placement: gpt-4o over the asset list + channel_metrics chunks.
 """
+import hashlib
 import json
-import shutil
 from pathlib import Path
 
 from agents.common import GROUNDING_RULE, format_context
-from config import CACHE_DIR, DEMO_MODE, MAX_IMAGE_CALLS_PER_RUN
+from config import (
+    ASSETS_DIR, CACHE_DIR, DEMO_MODE, MAX_IMAGE_CALLS_PER_RUN,
+    quality_for, tier_cost,
+)
 from llm import openai_client
 from llm.router import pick_model
 from rag import store
 from schemas import PlacementResponse, ProductProfile
 from skills import registry
 
-GEN_DIR = CACHE_DIR / "generated"
+GEN_DIR = ASSETS_DIR                 # persisted under the Railway Volume (DATA_DIR)
 GEN_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def prompt_hash(prompt: str, aspect: str, quality: str) -> str:
+    return hashlib.sha256(f"{prompt}|{aspect}|{quality}".encode()).hexdigest()
 
 # cache fallback by asset kind -> filename under cache/
 _CACHE_MAP = {
@@ -71,34 +78,62 @@ def _cache_fallback(kind: str) -> tuple[str, bool]:
     return str(src), True
 
 
-def generate_assets(profile: ProductProfile, skill: dict, creative_id: int) -> list:
-    """Returns list of dicts: {kind, prompt, aspect, path, from_cache}."""
+def render_one(prompt: str, aspect: str, kind: str, calls: int,
+               cache_lookup=None) -> dict:
+    """Resolve a single image, prompt-hash cache first.
+
+    Returns a record with cost + provenance. `cache_lookup(hash) -> path|None`
+    lets the caller check whether this exact prompt was ever paid for before;
+    on a hit we reuse the file at $0.00 (the visible caching story).
+    """
+    quality = quality_for(kind)
+    h = prompt_hash(prompt, aspect, quality)
+    base = {"kind": kind, "prompt": prompt, "aspect": aspect,
+            "quality": quality, "prompt_hash": h}
+
+    # 1) prompt-hash cache hit — never pay twice for the same prompt
+    if cache_lookup:
+        hit = cache_lookup(h)
+        if hit and Path(hit).exists():
+            return {**base, "path": hit, "from_cache": False, "cache_hit": True,
+                    "origin": "cache_hit", "cost_usd": 0.0,
+                    "saved_usd": tier_cost(quality)}
+
+    # 2) over the per-run cap -> demo placeholder (no spend)
+    if calls >= MAX_IMAGE_CALLS_PER_RUN:
+        p, _ = _cache_fallback(kind)
+        return {**base, "path": p, "from_cache": True, "cache_hit": False,
+                "origin": "fallback", "cost_usd": 0.0, "saved_usd": 0.0}
+
+    # 3) real generation
+    try:
+        png = openai_client.generate_image(prompt, aspect, quality, task=f"image:{kind}")
+        out = GEN_DIR / f"{h[:16]}.png"
+        out.write_bytes(png)
+        return {**base, "path": str(out), "from_cache": False, "cache_hit": False,
+                "origin": "generated", "cost_usd": tier_cost(quality), "saved_usd": 0.0}
+    except Exception:
+        if not DEMO_MODE:
+            raise
+        p, _ = _cache_fallback(kind)
+        return {**base, "path": p, "from_cache": True, "cache_hit": False,
+                "origin": "fallback", "cost_usd": 0.0, "saved_usd": 0.0}
+
+
+def generate_assets(profile: ProductProfile, skill: dict, creative_id: int,
+                    cache_lookup=None) -> list:
+    """Returns a list of asset records (see render_one)."""
     fields = profile.model_dump()
     fields["brand_colors"] = ", ".join(profile.brand_colors)
     fields["key_claims"] = "; ".join(profile.key_claims)
 
-    results = []
-    calls = 0
+    results, calls = [], 0
     for spec in skill["image_specs"]:
         prompt = spec["prompt_template"].format(**fields)
-        kind, aspect = spec["kind"], spec["aspect"]
-        over_cap = calls >= MAX_IMAGE_CALLS_PER_RUN
-        path, from_cache = None, False
-        if not over_cap:
-            try:
-                png = openai_client.generate_image(prompt, aspect, task=f"image:{kind}")
-                out = GEN_DIR / f"c{creative_id}_{kind}_{calls}.png"
-                out.write_bytes(png)
-                path, from_cache = str(out), False
-                calls += 1
-            except Exception:
-                if not DEMO_MODE:
-                    raise
-                path, from_cache = _cache_fallback(kind)
-        else:
-            path, from_cache = _cache_fallback(kind)
-        results.append({"kind": kind, "prompt": prompt, "aspect": aspect,
-                        "path": path, "from_cache": from_cache})
+        rec = render_one(prompt, spec["aspect"], spec["kind"], calls, cache_lookup)
+        if rec["origin"] == "generated":
+            calls += 1
+        results.append(rec)
     return results
 
 
