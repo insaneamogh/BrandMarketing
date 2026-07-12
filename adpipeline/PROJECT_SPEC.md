@@ -22,13 +22,25 @@ Below the divider:  ▤ Asset Library · ⟲ History   (persistent shelves, outl
 
 ## Stack
 
-Python 3.11, FastAPI, ChromaDB (persistent), **Gemini free tier for ALL text/vision/
-embeddings** (`gemini-3.5-flash`; `google_search` grounding on `gemini-2.5-flash`;
-`gemini-embedding-001`), OpenAI **for images only** (`gpt-image-2`; `gpt-4o-mini`
-as a rate-limit text lifeline), Seedance lite t2v (optional video), SQLite/SQLAlchemy
-(Postgres-swappable), React + Vite. No LangGraph/LangChain — plain async Python + a
-simple orchestrator. Provider policy is centralized in `config.py` + `llm/router.py`;
-agents name a task, never a provider.
+Python 3.11, FastAPI, ChromaDB (persistent), Gemini (all text + vision + embeddings
++ search grounding), OpenAI (images only; mini text lifeline), Seedance lite t2v
+(optional video), SQLite/SQLAlchemy (Postgres-swappable), React + Vite. No
+LangGraph/LangChain — plain async Python + a simple orchestrator. Provider policy
+is centralized in `config.py` + `llm/router.py`; agents name a task, never a provider.
+
+## Model routing (the one rule)
+
+| Workload | Model | Env override |
+|---|---|---|
+| ALL text-in/text-out (research, plan, copy, placement + expected metrics) and vision (URL diagnosis) | **`gemini-3.5-flash`** (free tier, $0) | `GEMINI_MODEL` / `GEMINI_MODEL_LITE` |
+| `google_search` grounding ONLY (Agent 2's live competitor signal) | **`gemini-2.5-flash`** (free tier, $0) | `GEMINI_SEARCH_MODEL` |
+| Image generation + reference-image edits | **`gpt-image-2`** (the $10 budget, tiered) | `IMAGE_MODEL` (or `IMAGE_PROVIDER=gemini` → free `gemini-2.5-flash-image` drafts) |
+| RAG embeddings | `gemini-embedding-001` @768d ($0) | `GEMINI_EMBED_MODEL` / `EMBED_PROVIDER` |
+| Text lifeline when Gemini 429s mid-demo | `gpt-4o-mini` (~$0.001/call) | — |
+
+Search grounding is the single exception to "everything text on 3.5-flash" because
+the grounding tool is tied to that model tier (`llm/gemini_client.search_enrich`).
+All ids are env-overridable in the Railway dashboard without a code change.
 
 ## Agents (the handoff chain)
 
@@ -36,7 +48,7 @@ agents name a task, never a provider.
 |---|-------|--------------|------------------|
 | 1 | Research & Monitor | gemini-3.5-flash ($0) — **math precomputed in code** | summary, whats_wrong (severity+evidence+action), lagging, whats_working, scale rec → **human gate → Agent 2** |
 | 2 | Strategy Planner | gemini-3.5-flash ($0) + optional google_search on gemini-2.5-flash ($0) | plan_summary, campaign_angle, target segment, metric-grounded marketing_changes, next_steps → **human gate → Agent 3** |
-| 3 | Creative | gemini vision/copy ($0) + gpt-image-2 (tiered, the $10 budget) | URL diagnosis → copy + images (reference-image aware, prompt tweak, per-asset edit+regenerate) → placement + expected metrics w/ 0-1 probability → **Approve & Publish** |
+| 3 | Creative | gemini-3.5-flash vision/copy/placement ($0) + gpt-image-2 (tiered, the $10 budget) | URL diagnosis → copy + images (reference-image aware, prompt tweak, per-asset edit+regenerate) → placement + expected metrics w/ 0-1 probability → **Approve & Publish** |
 | — | Video (optional) | Seedance lite t2v (~$0.30/5s clip, explicit click only) | one mp4 per /bundle creative, cached |
 
 State machine = `Campaign.status`: research_pending → research_approved →
@@ -58,7 +70,9 @@ frame, no text overlay) · `/meta` (4:5 + 9:16 + hook overlays) · `/bundle` (al
 Each `image_spec` carries `kind` + `aspect`; the router assigns a **quality tier**
 per kind (`config.QUALITY_BY_KIND`): hero/compliance → `high`, lifestyle/infographic
 → `medium`, storyboard stills → `low`. Tier maps to per-image cost
-(`config.IMAGE_TIERS`, ~gpt-image-2 1024² pricing).
+(`config.IMAGE_TIERS` — gpt-image 1024² pricing estimates; non-square bills 1.5x
+via `config.tier_cost`. Adjust the three tier values if gpt-image-2 list prices
+differ).
 
 ## Prompt-hash caching (the visible cost-discipline story)
 
@@ -84,8 +98,8 @@ accepts an optional user-edited prompt — the per-image tweak flexibility.
 Screen (sidebar, below a divider, outside the numbered pipeline):
 - **4 stats:** assets stored · total image spend · cache hits · dollars saved.
 - **Filters:** brand chips · skill chips · "Cache hits" toggle.
-- **Grid:** each asset shows ID, run, skill, brand, quality tier + **exact cost**;
-  cache hits badged green `CACHE HIT · $0.00`.
+- **Grid:** each asset shows ID, campaign, skill, brand, quality tier + **exact
+  cost**; cache hits badged green `CACHE HIT · $0.00`.
 - **Per-asset actions:** **Reuse** (duplicate into the shelf at $0) · **Variant**
   (re-render the stored prompt through the cache).
 
@@ -124,11 +138,11 @@ So a single writable location must survive redeploys.
 - **`DATA_DIR`** (env) is that location. Add a Railway **Volume**, mount at `/data`,
   set `DATA_DIR=/data`. Everything persistent lives under it — set in `config.py`,
   never hardcoded elsewhere:
-  - `DATA_DIR/adpipeline.db` — SQLite
+  - `DATA_DIR/adpipeline.db` — SQLite (campaigns, decisions, assets, cost log)
   - `DATA_DIR/chroma` — Chroma index (no re-embed / re-cost on cold start)
-  - `DATA_DIR/assets` — generated + reused image blobs
-- Images served via `GET /assets/{id}` reading from the Volume — **never** static
-  from the frontend, and **never** base64'd into the DB.
+  - `DATA_DIR/assets` — generated images, uploaded reference images, Seedance mp4s
+- Images/videos served via `GET /assets/{id}` / `GET /videos/{id}` reading from the
+  Volume — **never** static from the frontend, and **never** base64'd into the DB.
 - **Bind `$PORT`:** `uvicorn main:app --host 0.0.0.0 --port $PORT` (`Procfile` /
   `nixpacks.toml` do this). Hardcoding 8000 = failed healthcheck.
 - **Single service:** FastAPI serves `frontend/dist` (built in `nixpacks.toml`).
@@ -136,8 +150,8 @@ So a single writable location must survive redeploys.
 - **Env vars (dashboard, never commit `.env`):** `GOOGLE_API_KEY` (required — all
   text is Gemini free tier), `OPENAI_API_KEY` (images), `SEEDANCE_API_KEY` (optional
   video), `DATA_DIR`, `MAX_IMAGE_CALLS_PER_RUN`, `DEMO_MODE`, optional
-  `IMAGE_PROVIDER` / `IMAGE_MODEL` / `GEMINI_MODEL` / `EMBED_PROVIDER` / `DATABASE_URL`
-  (full list in `.env.example`).
+  `IMAGE_PROVIDER` / `IMAGE_MODEL` / `GEMINI_MODEL` / `GEMINI_SEARCH_MODEL` /
+  `EMBED_PROVIDER` / `DATABASE_URL` (full list in `.env.example`).
 - **Cost guard:** set a Railway usage alert; `MAX_IMAGE_CALLS_PER_RUN` caps spend
   per run so a retry loop can't run away.
 - **Cold starts:** warm the URL before a demo, or run locally and show the Railway
@@ -150,9 +164,14 @@ swap.
 
 ## Guardrails
 
+- Two human gates before any money is spent on images; a third before publish.
 - Every image call gated by `MAX_IMAGE_CALLS_PER_RUN`; `DEMO_MODE` serves `/cache`.
+- Video never auto-triggers: explicit `POST /video`, one clip per creative, cached.
 - All agent outputs Pydantic-validated; one retry with the JSON Schema on failure.
-- Every LLM/image call logged (model, tokens, latency, cost) to SQLite → `/cost`.
+- Expected-metric probabilities instructed to stay calibrated (capped at 0.85
+  unless the context shows the exact channel+region+product combination).
+- Every LLM/image/video call logged (model, tokens, latency, cost) to SQLite → `/cost`.
+- Gemini 429s: two backoff retries, then the gpt-4o-mini lifeline.
 
 ## Build order (already implemented)
 
