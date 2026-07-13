@@ -28,6 +28,17 @@ _FALLBACKS = {
         brand_colors=["#FFFFFF", "#E4002B", "#F4A300"],
         price_tier="premium",
     ),
+    "hills_rx": ProductProfile(
+        name="Hill's Prescription Diet k/d Kidney Care",
+        category="Veterinary therapeutic dog food (prescription, kidney support)",
+        key_claims=["Clinically tested nutrition for kidney support",
+                    "Formulated with veterinarians and nutritionists",
+                    "Supports appetite and vitality in pets with kidney conditions"],
+        pack_description="White clinical bag with Hill's red-orange band, 'Prescription Diet k/d' "
+                         "lettering and a small dog photo — pharmaceutical, vet-office look",
+        brand_colors=["#FFFFFF", "#E4002B", "#1C3B6E"],
+        price_tier="prestige",
+    ),
     "palmolive": ProductProfile(
         name="Palmolive Luminous Oils",
         category="Personal care — shower gel / body wash",
@@ -37,12 +48,40 @@ _FALLBACKS = {
         brand_colors=["#0A7D3E", "#E8B04B", "#FFF6E6"],
         price_tier="mass-premium",
     ),
+    "eltamd": ProductProfile(
+        name="EltaMD UV Clear Broad-Spectrum SPF 46",
+        category="Dermatologist-recommended facial sunscreen (skincare)",
+        key_claims=["Broad-spectrum SPF 46 with transparent zinc oxide",
+                    "Oil-free, calms and protects sensitive and acne-prone skin",
+                    "Niacinamide supports a clear, even-looking complexion"],
+        pack_description="Minimal white cylindrical pump bottle with clean black EltaMD "
+                         "wordmark and thin teal 'UV Clear' accent band — clinical, derm-office aesthetic",
+        brand_colors=["#FFFFFF", "#000000", "#2AA8A0"],
+        price_tier="prestige",
+    ),
+    "filorga": ProductProfile(
+        name="Filorga NCEF-Reverse Supreme Regenerating Cream",
+        category="Premium French anti-aging skincare (face cream)",
+        key_claims=["NCEF complex inspired by aesthetic-medicine formulations",
+                    "Visibly smooths wrinkles and improves firmness",
+                    "Restores radiance and skin quality"],
+        pack_description="Luxurious glass jar with matte white body, glossy black lid and "
+                         "gold NCEF-REVERSE lettering — French-pharmacy prestige look",
+        brand_colors=["#FFFFFF", "#000000", "#C9A24B"],
+        price_tier="prestige",
+    ),
 }
 
 
 def _guess_family(text: str) -> str:
     t = text.lower()
-    if any(k in t for k in ("palmolive", "luminous", "skin", "soap", "shower")):
+    if any(k in t for k in ("eltamd", "uv clear", "sunscreen", "spf")):
+        return "eltamd"
+    if any(k in t for k in ("filorga", "ncef", "anti-aging", "anti-ageing")):
+        return "filorga"
+    if any(k in t for k in ("prescription", "k/d", "kd-", "therapeutic", "kidney")):
+        return "hills_rx"
+    if any(k in t for k in ("palmolive", "luminous", "soap", "shower", "body wash")):
         return "palmolive"
     return "hills"
 

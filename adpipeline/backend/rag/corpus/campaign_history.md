@@ -1,4 +1,4 @@
-# Campaign History — Last 8 Campaigns (MOCK)
+# Campaign History — Last 12 Campaigns (MOCK)
 
 Provenance: MOCK — illustrative internal demo data, kept in a realistic range
 (campaign CTRs of 0.7%–3.4% bracket the real 2025 Meta median CTR of 2.19%; see
@@ -51,8 +51,36 @@ Spend $70k · CTR 1.6% · CPA $24 · ROAS 3.0x
 Learning: solid; Amazon leg out-converted Meta leg 2:1 on CPA. Shift budget mix
 toward Amazon on the next flight.
 
+## 9. EltaMD UV Clear — "Derm Counter Trust" (NA, Derm-office referral + Amazon)
+Spend $60k · CTR 1.5% · CPA $18 · ROAS 4.4x
+Learning: dermatologist recommendation converts like vet referral does for
+Hill's — professional endorsement is the portfolio's repeatable engine. Amazon
+subscribe-and-save lifted repeat purchase. Clear scale candidate.
+
+## 10. EltaMD — "Skinfluencer UGC" (NA, TikTok + Meta)
+Spend $35k · CTR 3.2% · CPA $21 · ROAS 3.4x
+Learning: creator content fronted by real dermatologists out-performed polished
+brand film ~2:1 on CTR. Watch claim drift in creator scripts — same compliance
+risk as Derm Glow (#7).
+
+## 11. Filorga NCEF-Reverse — "Prestige Counter Revival" (EU, travel retail + Meta)
+Spend $90k · CTR 0.8% · CPA $70 · ROAS 0.8x
+Learning: below break-even. Legacy prestige-counter placements generated no
+discovery; the audience that buys at counters was already buying. Spend did not
+create new demand.
+
+## 12. Filorga — "Tmall Global Reboot" (China, cross-border e-commerce)
+Spend $65k · CTR 1.0% · CPA $52 · ROAS 1.1x
+Learning: below break-even. Near-zero digital brand equity vs insurgent labels;
+no KOL/live-commerce motion behind the media. Do not refund until a
+digital-native discovery engine exists (see skin_health_diagnostics.md).
+
 ## Portfolio takeaways
-- Scale: #3 (Amazon Always-On) and #6 (Quick-Commerce Blitz) are underfunded winners.
+- Scale: #3 (Amazon Always-On), #6 (Quick-Commerce Blitz) and #9 (Derm Counter
+  Trust) are underfunded winners.
 - Fix/pause: #4 (APAC Awareness) until distribution exists; #7 (Derm Glow) for
-  compliance drift.
+  compliance drift; #11/#12 (both Filorga flights) until a digital discovery
+  motion exists.
+- Pattern: professional endorsement (vet #2, derm #9) is the highest-ROAS lever
+  in the whole portfolio — but each is capacity-constrained.
 - Guardrail: refresh creative every 4–6 weeks to counter fatigue.

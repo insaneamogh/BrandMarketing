@@ -49,11 +49,22 @@ COPY_SYSTEM = (
     + GROUNDING_RULE + "\n\n"
     "COPY RULES:\n"
     "- NEVER produce any BANNED CLAIM listed in the brand-guidelines context, "
-    "nor a paraphrase that implies one.\n"
+    "nor a paraphrase that implies one. If a guideline marks a claim as "
+    "substantiated for one specific product, use it only for that product and "
+    "only verbatim.\n"
     "- Match the brand tone described in the guidelines; lead with benefits that "
-    "appear in the product profile's key_claims.\n"
+    "appear in the product profile's key_claims — every benefit you write must "
+    "trace to a key_claim or an approved angle in the guidelines.\n"
     "- Obey the PLATFORM RULES exactly (character limits, overlay word counts, "
-    "no-text rules).\n"
+    "no-text rules). Count characters before you answer.\n"
+    "- Write like a senior CPG copywriter: concrete nouns, active verbs, zero "
+    "filler ('elevate', 'unleash', 'discover' are banned as openers). One idea "
+    "per line; the first three words carry the benefit.\n"
+    "- storyboard_6_frames (when requested): each frame = shot type + subject + "
+    "action in under 20 words, building to a product-hero final frame.\n"
+    "- veo_prompt (when requested): ONE continuous 5-second shot — subject, "
+    "action, setting, lighting, camera move, mood/grade, in that order; no "
+    "cuts, no on-screen text, product clearly visible by second 3.\n"
     "- Produce every requested copy-block key; values are strings or arrays of "
     "strings; write tight, specific, non-generic copy."
 )
@@ -83,17 +94,21 @@ PLACEMENT_SYSTEM = (
 
 
 def _brand_key(profile: ProductProfile) -> str:
-    t = (profile.name + profile.category).lower()
-    return "palmolive" if any(k in t for k in ("palmolive", "skin", "soap", "shower")) else "hills"
+    """Map a product profile to its brand-guidelines family (hills|palmolive|skin_health)."""
+    t = (profile.name + " " + profile.category).lower()
+    if any(k in t for k in ("eltamd", "filorga", "ncef", "pca skin", "sunscreen", "spf", "serum", "anti-aging", "skincare")):
+        return "skin_health"
+    if any(k in t for k in ("palmolive", "soap", "shower", "body wash", "hand wash")):
+        return "palmolive"
+    return "hills"
 
 
 # ---------- copy ----------
 def generate_copy(profile: ProductProfile, skill: dict, plan_summary: str,
                   campaign_angle: str) -> dict:
     fam = _brand_key(profile)
-    gl = "palmolive" if fam == "palmolive" else "hills"
     chunks = store.retrieve("brand_guidelines",
-                            f"{profile.name} tone banned claims {gl}", k=3)
+                            f"{profile.name} tone banned claims {fam}", k=3)
     ctx = format_context(chunks)
     if campaign_angle:
         brief = (

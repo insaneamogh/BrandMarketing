@@ -16,13 +16,17 @@ and to project campaign efficiency.
 | Google Search      | India  | $4.50     |
 | Amazon Sponsored   | NA     | $6.90     |
 | Vet referral       | NA     | $14.00    |
+| Derm-office referral | NA   | $16.50    |
+| TikTok (paid)      | NA     | $5.20     |
 | Quick-commerce ads | India  | $2.40     |
 
 ## Conversion Rate (CVR) by channel
 | Channel            | Region | CVR    | Note                                   |
 |--------------------|--------|--------|----------------------------------------|
 | Vet referral       | NA     | 12.0%  | ~4x the CVR of paid social             |
+| Derm-office referral | NA   | 10.5%  | professional endorsement, like vet     |
 | Paid social (Meta) | NA     | 3.0%   | baseline top-of-funnel                 |
+| TikTok (paid)      | NA     | 2.4%   | discovery-led, younger skew            |
 | Amazon             | NA     | 2.1%   | vs category average of 1.4%            |
 | Amazon             | India  | 1.9%   | vs category average of 1.3%            |
 | Quick-commerce     | India  | 4.6%   | high-intent, convenience-driven        |
@@ -36,6 +40,11 @@ and to project campaign efficiency.
   conversion channel for Hill's Science Diet.
 - Quick-commerce in India combines low CPL ($2.40) and strong CVR (4.6%) — the
   standout efficiency play for Palmolive Luminous Oils in India metros.
+- Derm-office referral (CPL $16.50, CVR 10.5%) behaves like vet referral: high
+  cost, very high conversion, capacity-constrained — the natural home for EltaMD
+  UV Clear, mirroring Prescription Diet's vet motion.
+- TikTok (CPL $5.20, CVR 2.4%) is the discovery flank for skincare — efficient
+  reach for EltaMD creator content, weaker for considered therapeutic purchases.
 
 ## Definitions (how these reconcile with public benchmarks)
 - A "lead" here is a light action (add-to-cart, email/quiz signup), which is why

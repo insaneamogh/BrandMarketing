@@ -52,7 +52,15 @@ const SOLO_SUBS = {
   creative: "Agent 3 · standalone",
 };
 
-const PRODUCTS = ["Hill's Youthful Vitality", "Palmolive Luminous Oils"];
+// 5 products across the 3 portfolios: high-margin winners (Prescription Diet,
+// EltaMD), steady lines (Youthful Vitality, Luminous Oils), one struggler (Filorga).
+const PRODUCTS = [
+  "Hill's Youthful Vitality",
+  "Hill's Prescription Diet k/d",
+  "Palmolive Luminous Oils",
+  "EltaMD UV Clear SPF 46",
+  "Filorga NCEF-Reverse",
+];
 const SKILLS = [
   { cmd: "/product-shoot", d: "4 hero images — packshot, macro, lifestyle, flat-lay" },
   { cmd: "/amazon", d: "Listing-compliant set + A+ content blocks" },
@@ -62,8 +70,44 @@ const SKILLS = [
 const DEFAULT_URL = {
   "Hill's Youthful Vitality":
     "https://www.hillspet.com/dog-food/sd-canine-youthful-vitality-adult-7-plus-chicken-rice-recipe-dry",
+  "Hill's Prescription Diet k/d": "https://www.hillspet.com/dog-food/pd-kd-canine-dry",
   "Palmolive Luminous Oils": "https://www.palmolive.com/en-us/products/body-wash",
+  "EltaMD UV Clear SPF 46": "https://eltamd.com/products/uv-clear-broad-spectrum-spf-46",
+  "Filorga NCEF-Reverse": "https://www.filorga.com/en/ncef-reverse/",
 };
+
+// which brand-guidelines doc + guardrail summary applies to a product name
+function guardrailsFor(name) {
+  if (/EltaMD|Filorga|NCEF/i.test(name || ""))
+    return {
+      cite: "brand_guidelines_skinhealth.md",
+      text: 'No medical cure claims · sunscreen monograph language only · "#1 derm-recommended" is substantiated for EltaMD only.',
+    };
+  if (/Palmolive|Luminous/i.test(name || ""))
+    return {
+      cite: "brand_guidelines_palmolive.md",
+      text: 'No derm cure claims · no "100% natural" absolutes · no implied medical endorsement without substantiation.',
+    };
+  return {
+    cite: "brand_guidelines_hills.md",
+    text: 'No disease-cure claims · no "reverses aging" · no implied vet endorsement without substantiation.',
+  };
+}
+
+/* responsive: one breakpoint, tracked live so rotate/resize just works */
+function useIsMobile(bp = 880) {
+  const [m, setM] = useState(
+    () => typeof window !== "undefined" && window.innerWidth <= bp
+  );
+  useEffect(() => {
+    const mq = window.matchMedia(`(max-width: ${bp}px)`);
+    const fn = (e) => setM(e.matches);
+    mq.addEventListener("change", fn);
+    setM(mq.matches);
+    return () => mq.removeEventListener("change", fn);
+  }, [bp]);
+  return m;
+}
 
 async function api(path, opts) {
   const r = await fetch(path, {
@@ -99,6 +143,9 @@ export default function App() {
   const [cost, setCost] = useState({ total_usd: 0, by_model: [] });
   const [loading, setLoading] = useState("");
   const [error, setError] = useState("");
+  const isMobile = useIsMobile();
+  const [navOpen, setNavOpen] = useState(false);   // mobile: pipeline drawer
+  const [helpOpen, setHelpOpen] = useState(false); // "how it works" drawer
 
   useEffect(() => {
     const link = document.createElement("link");
@@ -107,6 +154,14 @@ export default function App() {
       "https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Instrument+Sans:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap";
     document.head.appendChild(link);
     refreshCost();
+    const onKey = (e) => {
+      if (e.key === "Escape") {
+        setNavOpen(false);
+        setHelpOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, []);
 
   const refreshCost = async () => {
@@ -401,10 +456,46 @@ export default function App() {
       </div>
 
       <div style={{ display: "flex", position: "relative", zIndex: 1, minHeight: "100vh" }}>
-        <Sidebar view={view} setView={setView} idx={idx} cost={cost} calls={calls} campaign={campaign} mode={mode} />
-        <main style={{ flex: 1, overflowY: "auto" }}>
-          <div style={{ maxWidth: 1140, margin: "0 auto", padding: "28px 44px 72px" }}>
-            <ModeToggle mode={mode} onSwitch={switchMode} />
+        {!isMobile && (
+          <Sidebar view={view} setView={setView} idx={idx} cost={cost} calls={calls} campaign={campaign} mode={mode} />
+        )}
+        {isMobile && navOpen && (
+          <div style={{ position: "fixed", inset: 0, zIndex: 60 }}>
+            <div
+              onClick={() => setNavOpen(false)}
+              style={{ position: "absolute", inset: 0, background: "rgba(11,29,51,0.45)", backdropFilter: "blur(2px)" }}
+            />
+            <div style={{ position: "absolute", top: 0, left: 0, bottom: 0, overflowY: "auto" }}>
+              <Sidebar
+                view={view} setView={setView} idx={idx} cost={cost} calls={calls}
+                campaign={campaign} mode={mode} mobile
+                onNavigate={() => setNavOpen(false)}
+              />
+            </div>
+          </div>
+        )}
+        <main style={{ flex: 1, overflowY: "auto", minWidth: 0 }}>
+          <div style={{ maxWidth: 1140, margin: "0 auto", padding: isMobile ? "16px 16px 60px" : "28px 44px 72px" }}>
+            {isMobile && (
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
+                <button
+                  onClick={() => setNavOpen(true)}
+                  aria-label="Open pipeline menu"
+                  style={{
+                    ...glass, borderRadius: 12, width: 42, height: 42, fontSize: 19,
+                    display: "inline-flex", alignItems: "center", justifyContent: "center",
+                    cursor: "pointer", color: T.ink, border: `1px solid ${T.line}`,
+                  }}
+                >
+                  ☰
+                </button>
+                <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ width: 26, height: 26, borderRadius: 8, background: T.blue, display: "inline-flex", alignItems: "center", justifyContent: "center", color: "#fff", fontFamily: T.serif, fontSize: 16 }}>A</span>
+                  <span style={{ fontFamily: T.serif, fontSize: 19 }}>AdPipeline</span>
+                </span>
+              </div>
+            )}
+            <ModeToggle mode={mode} onSwitch={switchMode} onHelp={() => setHelpOpen(true)} />
             <TopBar view={view} go={setView} campaign={campaign} product={product} mode={mode} />
             {error && <Banner tone="err">{error}</Banner>}
             {loading && <Banner tone="load">{loading}</Banner>}
@@ -431,6 +522,8 @@ export default function App() {
           </div>
         </main>
       </div>
+
+      <HelpDrawer open={helpOpen} onClose={() => setHelpOpen(false)} mode={mode} />
     </div>
   );
 }
@@ -452,7 +545,8 @@ function blob(top, side, sx, bottom, size, color, isBottom) {
 
 /* ---------- shell ---------- */
 /* the chained/solo switch — the one control that changes how the agents run */
-function ModeToggle({ mode, onSwitch }) {
+function ModeToggle({ mode, onSwitch, onHelp }) {
+  const isMobile = useIsMobile();
   const opts = [
     { k: "chain", icon: "⛓", label: "Chained pipeline" },
     { k: "solo", icon: "◇", label: "Solo agents" },
@@ -472,7 +566,7 @@ function ModeToggle({ mode, onSwitch }) {
                 gap: 8,
                 border: "none",
                 cursor: "pointer",
-                padding: "9px 18px",
+                padding: isMobile ? "9px 13px" : "9px 18px",
                 borderRadius: 9,
                 fontFamily: T.sans,
                 fontWeight: 700,
@@ -488,17 +582,197 @@ function ModeToggle({ mode, onSwitch }) {
           );
         })}
       </div>
-      <span style={{ fontSize: 12.5, color: T.faint, fontWeight: 500, maxWidth: 520, lineHeight: 1.45 }}>
-        {mode === "chain"
-          ? "Agents hand off 1 → 2 → 3 through human approval gates."
-          : "Each agent runs standalone — no gates, no handoffs. Jump straight to any step (e.g. just generate an ad)."}
-      </span>
+      {!isMobile && (
+        <span style={{ fontSize: 12.5, color: T.faint, fontWeight: 500, maxWidth: 440, lineHeight: 1.45 }}>
+          {mode === "chain"
+            ? "Agents hand off 1 → 2 → 3 through human approval gates."
+            : "Each agent runs standalone — no gates, no handoffs. Jump straight to any step (e.g. just generate an ad)."}
+        </span>
+      )}
+      <button
+        onClick={onHelp}
+        style={{
+          ...glass,
+          marginLeft: "auto",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 8,
+          padding: "9px 16px",
+          borderRadius: 99,
+          border: `1px solid ${T.blueBorder}`,
+          cursor: "pointer",
+          fontFamily: T.sans,
+          fontWeight: 700,
+          fontSize: 13,
+          color: T.blue,
+          background: "rgba(255,255,255,0.75)",
+        }}
+      >
+        <span
+          style={{
+            width: 19, height: 19, borderRadius: "50%", background: T.blue, color: "#fff",
+            display: "inline-flex", alignItems: "center", justifyContent: "center",
+            fontSize: 12, fontFamily: T.serif,
+          }}
+        >
+          ?
+        </span>
+        How it works
+      </button>
     </div>
   );
 }
 
-function Sidebar({ view, setView, idx, cost, calls, campaign, mode }) {
+/* ---------- help drawer: the non-technical "what do I do here" guide ---------- */
+function HelpStep({ n, icon, title, children, you, last }) {
+  return (
+    <div style={{ display: "flex", gap: 14 }}>
+      {/* rail: numbered node + connector */}
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0 }}>
+        <div
+          style={{
+            width: 38, height: 38, borderRadius: "50%", flexShrink: 0,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            background: you ? T.green : T.blue, color: "#fff", fontSize: 17,
+            boxShadow: `0 5px 14px ${you ? "rgba(23,138,80,0.35)" : "rgba(31,117,254,0.35)"}`,
+          }}
+        >
+          {icon}
+        </div>
+        {!last && (
+          <div style={{ width: 2, flex: 1, minHeight: 22, background: "linear-gradient(rgba(31,117,254,0.45), rgba(31,117,254,0.12))", margin: "4px 0" }} />
+        )}
+      </div>
+      <div style={{ paddingBottom: last ? 0 : 20, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span style={{ fontFamily: T.mono, fontSize: 10.5, color: T.faint, letterSpacing: 1 }}>{n}</span>
+          <span style={{ fontSize: 15, fontWeight: 700, color: T.ink }}>{title}</span>
+          {you && <Pill color="#fff" bg={T.green}>YOU</Pill>}
+        </div>
+        <p style={{ fontSize: 13, color: T.body, lineHeight: 1.6, margin: "5px 0 0", fontWeight: 500 }}>{children}</p>
+      </div>
+    </div>
+  );
+}
+
+function HelpDrawer({ open, onClose, mode }) {
+  const isMobile = useIsMobile();
+  if (!open) return null;
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 80 }}>
+      <div
+        onClick={onClose}
+        style={{ position: "absolute", inset: 0, background: "rgba(11,29,51,0.45)", backdropFilter: "blur(2px)" }}
+      />
+      <div
+        style={{
+          position: "absolute", top: 0, right: 0, bottom: 0,
+          width: isMobile ? "100%" : 470,
+          background: "rgba(250,251,254,0.97)",
+          backdropFilter: "blur(24px)",
+          boxShadow: "-18px 0 50px rgba(11,29,51,0.25)",
+          overflowY: "auto",
+          padding: isMobile ? "22px 20px 48px" : "30px 30px 48px",
+          borderRadius: isMobile ? 0 : "22px 0 0 22px",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+          <span style={{ fontFamily: T.mono, fontSize: 11, color: T.blue, letterSpacing: 1.5, fontWeight: 600 }}>
+            GUIDE · 2 MIN READ
+          </span>
+          <button
+            onClick={onClose}
+            aria-label="Close guide"
+            style={{
+              width: 34, height: 34, borderRadius: "50%", border: `1px solid ${T.line}`,
+              background: "rgba(255,255,255,0.9)", cursor: "pointer", fontSize: 16, color: T.soft,
+            }}
+          >
+            ✕
+          </button>
+        </div>
+        <h2 style={{ fontFamily: T.serif, fontSize: 30, fontWeight: 400, margin: "4px 0 8px", letterSpacing: "-0.5px" }}>
+          How AdPipeline works
+        </h2>
+        <p style={{ fontSize: 13.5, color: T.soft, lineHeight: 1.6, margin: "0 0 22px", fontWeight: 500 }}>
+          Three AI teammates build a marketing campaign for you — and nothing ships without
+          your say-so. Here's the whole journey:
+        </p>
+
+        <Card style={{ padding: "22px 20px", marginBottom: 18 }}>
+          <Label color={T.blue}>⛓ THE CHAINED PIPELINE — START TO PUBLISHED AD</Label>
+          <div style={{ marginTop: 18 }}>
+            <HelpStep n="STEP 1" icon="🎯" title="Pick a product & a goal" you>
+              Choose one of the 5 products and type what you want to achieve
+              (e.g. "grow sales in the US"). Hit <b>Start campaign</b>.
+            </HelpStep>
+            <HelpStep n="STEP 2" icon="🔍" title="Agent 1 researches">
+              It reads the company knowledge base and reports what's going wrong, what's
+              working, and where to focus — every claim shows the document it came from.
+            </HelpStep>
+            <HelpStep n="STEP 3" icon="✅" title="You approve — or reject with a note" you>
+              Happy? Approve, and the research is handed to the planner. Not happy?
+              Reject with a comment and the agent redoes it your way.
+            </HelpStep>
+            <HelpStep n="STEP 4" icon="🧭" title="Agent 2 builds the plan">
+              The approved research becomes a campaign plan: one big creative idea, the
+              budget moves that the numbers justify, and this week's next steps.
+            </HelpStep>
+            <HelpStep n="STEP 5" icon="✅" title="You approve the plan" you>
+              Same deal — approve to continue, or reject with feedback.
+            </HelpStep>
+            <HelpStep n="STEP 6" icon="🎨" title="Agent 3 creates the ads">
+              It generates the ad images and copy for your chosen format (product shoot,
+              Amazon listing, Meta ads, or full bundle with a video storyboard). You can
+              upload a real product photo and add your own art direction.
+            </HelpStep>
+            <HelpStep n="STEP 7" icon="📊" title="See where the ads go & what to expect">
+              A placement plan maps each ad to a channel with a budget split, plus honest
+              predicted results with confidence bars.
+            </HelpStep>
+            <HelpStep n="STEP 8" icon="🚀" title="Approve & publish" you last>
+              The final green button. The campaign is stamped PUBLISHED and lands in your
+              History.
+            </HelpStep>
+          </div>
+        </Card>
+
+        <Card style={{ padding: "22px 20px", marginBottom: 18 }}>
+          <Label color={T.blue}>◇ SOLO AGENTS — WHEN YOU DON'T NEED THE WHOLE CHAIN</Label>
+          <p style={{ fontSize: 13, color: T.body, lineHeight: 1.65, margin: "12px 0 0", fontWeight: 500 }}>
+            Flip the toggle at the top to <b>Solo agents</b> and every step becomes a
+            standalone tool with no approval gates. Just need an ad? Go straight to the
+            <b> Creative Studio</b>, pick a product and a format, and generate — your
+            objective becomes the brief. Need only a market read or only a plan? Run
+            Agent 1 or Agent 2 alone the same way.
+          </p>
+        </Card>
+
+        <Card style={{ padding: "22px 20px" }}>
+          <Label>GOOD TO KNOW</Label>
+          <ul style={{ margin: "10px 0 0", paddingLeft: 18 }}>
+            {[
+              "The little blue tags (like campaign_history.md) show which document a claim came from — no source, no claim.",
+              "The dark card in the menu shows the live cost of every AI call. Repeat image prompts are served from cache at $0.00.",
+              "History keeps every past campaign — open one to resume exactly where it left off.",
+              "The Asset Library stores every image ever generated, with its exact cost.",
+              "On any generated image, tap “✎ edit prompt” to tweak and regenerate just that one.",
+            ].map((t, i) => (
+              <li key={i} style={{ fontSize: 12.5, color: T.body, lineHeight: 1.65, marginBottom: 7, fontWeight: 500 }}>{t}</li>
+            ))}
+          </ul>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+function Sidebar({ view, setView, idx, cost, calls, campaign, mode, mobile, onNavigate }) {
   const solo = mode === "solo";
+  const nav = (k) => {
+    setView(k);
+    onNavigate?.(); // mobile drawer closes after choosing a step
+  };
   const shelf = [
     { key: "library", icon: "▤", label: "Asset Library", sub: "Persistent shelf" },
     { key: "history", icon: "⟲", label: "History", sub: "Past campaigns" },
@@ -509,12 +783,13 @@ function Sidebar({ view, setView, idx, cost, calls, campaign, mode }) {
         ...glass,
         width: 258,
         flexShrink: 0,
-        margin: 16,
+        margin: mobile ? 0 : 16,
         marginRight: 0,
         padding: "30px 16px 24px",
         display: "flex",
         flexDirection: "column",
-        borderRadius: 22,
+        borderRadius: mobile ? "0 22px 22px 0" : 22,
+        ...(mobile ? { minHeight: "100vh", background: "rgba(255,255,255,0.94)" } : {}),
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 8px" }}>
@@ -552,7 +827,7 @@ function Sidebar({ view, setView, idx, cost, calls, campaign, mode }) {
           return (
             <button
               key={n.key}
-              onClick={() => setView(n.key)}
+              onClick={() => nav(n.key)}
               style={{
                 display: "flex",
                 gap: 12,
@@ -605,7 +880,7 @@ function Sidebar({ view, setView, idx, cost, calls, campaign, mode }) {
         return (
           <button
             key={n.key}
-            onClick={() => setView(n.key)}
+            onClick={() => nav(n.key)}
             style={{
               display: "flex",
               gap: 12,
@@ -717,9 +992,10 @@ function TopBar({ view, go, campaign, product, mode }) {
 }
 
 function PageTitle({ eyebrow, title, sub, right }) {
+  const isMobile = useIsMobile();
   return (
-    <header style={{ marginBottom: 32, display: "flex", alignItems: "flex-end", gap: 30 }}>
-      <div style={{ flex: 1 }}>
+    <header style={{ marginBottom: isMobile ? 22 : 32, display: "flex", alignItems: "flex-end", gap: 30, flexWrap: "wrap" }}>
+      <div style={{ flex: 1, minWidth: 240 }}>
         <span
           style={{
             fontFamily: T.mono,
@@ -735,7 +1011,7 @@ function PageTitle({ eyebrow, title, sub, right }) {
         <h1
           style={{
             fontFamily: T.serif,
-            fontSize: 54,
+            fontSize: isMobile ? 34 : 54,
             fontWeight: 400,
             letterSpacing: "-1px",
             margin: "10px 0 0",
@@ -936,10 +1212,11 @@ function Gate({ stage, campaign, decide, rerun, loading, approveLabel }) {
 
 /* ---------- solo run form (product + objective + one run button) ---------- */
 function SoloRunCard({ product, setProduct, objective, setObjective, loading, onRun, label, hint }) {
+  const isMobile = useIsMobile();
   return (
     <Card style={{ marginBottom: 16 }}>
       <Label>SOLO RUN · NO GATES, NO HANDOFF</Label>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr auto", gap: 14, marginTop: 12, alignItems: "end" }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 2fr auto", gap: 14, marginTop: 12, alignItems: "end" }}>
         <div>
           <Label>PRODUCT</Label>
           <select style={{ ...inputStyle, marginTop: 6 }} value={product} onChange={(e) => setProduct(e.target.value)}>
@@ -966,6 +1243,7 @@ function Overview({ product, setProduct, objective, setObjective, campaign, star
   const [prompts, setPrompts] = useState(null);
   const [showPrompts, setShowPrompts] = useState(false);
   const solo = mode === "solo";
+  const isMobile = useIsMobile();
   const agents = [
     { n: "AGT-1", name: "Research & Monitor", model: "gemini-3.5-flash", does: "Watches campaigns and diagnoses what's going wrong, what lags, what works. Math runs in code, never the model." },
     { n: "AGT-2", name: "Strategy Planner", model: "gemini-3.5-flash + 2.5 search", does: "Turns approved research into a plan: campaign angle, marketing changes grounded in metrics, next steps." },
@@ -1000,7 +1278,7 @@ function Overview({ product, setProduct, objective, setObjective, campaign, star
 
       <Card style={{ marginBottom: 16 }}>
         <Label>{solo ? "SOLO RUN · PICK AN AGENT BELOW" : "NEW CAMPAIGN"}</Label>
-        <div style={{ display: "grid", gridTemplateColumns: solo ? "1fr 2fr" : "1fr 2fr auto", gap: 14, marginTop: 12, alignItems: "end" }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : solo ? "1fr 2fr" : "1fr 2fr auto", gap: 14, marginTop: 12, alignItems: "end" }}>
           <div>
             <Label>PRODUCT</Label>
             <select style={{ ...inputStyle, marginTop: 6 }} value={product} onChange={(e) => setProduct(e.target.value)}>
@@ -1021,7 +1299,7 @@ function Overview({ product, setProduct, objective, setObjective, campaign, star
         </div>
       </Card>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 16 }}>
         {agents.map((a, i) => (
           <Card key={a.n}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -1045,7 +1323,7 @@ function Overview({ product, setProduct, objective, setObjective, campaign, star
         ))}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: 16, marginTop: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1.5fr 1fr", gap: 16, marginTop: 16 }}>
         <Card>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <Label>AGENT SYSTEM PROMPTS</Label>
@@ -1073,17 +1351,18 @@ function Overview({ product, setProduct, objective, setObjective, campaign, star
         <Card>
           <Label>KNOWLEDGE BASE</Label>
           <div style={{ fontFamily: T.serif, fontSize: 34, marginTop: 8 }}>
-            12 <span style={{ fontSize: 18, color: T.soft }}>docs</span>
+            15 <span style={{ fontSize: 18, color: T.soft }}>docs</span>
           </div>
           <p style={{ fontSize: 13, color: T.soft, lineHeight: 1.65, marginTop: 8 }}>
             Real public data (FY2024 Hill's financials, 2025 Meta/Amazon ad benchmarks, India
-            quick-commerce) layered on internal demo data — each doc states its provenance.
+            quick-commerce, therapeutic pet-diet market, EltaMD/Filorga performance) layered on
+            internal demo data — each doc states its provenance.
             Agents answer only from here — <strong style={{ color: T.ink }}>no citation, no claim.</strong>
           </p>
           <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 12 }}>
             <Cite src="hills_regional_sales.md" />
             <Cite src="industry_ad_benchmarks.md" />
-            <Cite src="quick_commerce_india.md" />
+            <Cite src="skin_health_brand_performance.md" />
           </div>
         </Card>
       </div>
@@ -1144,6 +1423,7 @@ function Research({ campaign, decide, rerunResearch, loading, mode, soloResearch
 
 /* the report itself — shared by the chained view and the solo view */
 function ResearchBody({ r }) {
+  const isMobile = useIsMobile();
   const sev = { high: T.red, medium: T.amber, low: T.soft };
   const sevBg = { high: T.redSoft, medium: T.amberSoft, low: "rgba(11,29,51,0.05)" };
   return (
@@ -1179,7 +1459,7 @@ function ResearchBody({ r }) {
         ))}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginTop: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 14, marginTop: 14 }}>
         <Card>
           <Label color={T.amber}>WHERE IT LAGS</Label>
           <div style={{ marginTop: 8 }}>
@@ -1351,6 +1631,7 @@ function CreativeStudio({ product, setProduct, objective, setObjective, campaign
   const [ref, setRef] = useState(null); // {reference_id, url}
   const [uploading, setUploading] = useState(false);
   const solo = mode === "solo";
+  const isMobile = useIsMobile();
 
   // chain mode is gated on an approved plan; solo mode is always open
   if (!solo) {
@@ -1412,7 +1693,7 @@ function CreativeStudio({ product, setProduct, objective, setObjective, campaign
           )}
         </div>
         {solo && (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 12, marginTop: 14 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 2fr", gap: 12, marginTop: 14 }}>
             <div>
               <Label>PRODUCT</Label>
               <select
@@ -1446,7 +1727,7 @@ function CreativeStudio({ product, setProduct, objective, setObjective, campaign
             {loading ? "Generating…" : "Generate set"}
           </Btn>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 220px", gap: 12, marginTop: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 220px", gap: 12, marginTop: 12 }}>
           <div>
             <Label>ART DIRECTION · OPTIONAL PROMPT TWEAK (APPENDED TO EVERY IMAGE PROMPT)</Label>
             <input
@@ -1477,7 +1758,7 @@ function CreativeStudio({ product, setProduct, objective, setObjective, campaign
         </div>
       </Card>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginTop: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: 12, marginTop: 14 }}>
         {SKILLS.map((s) => {
           const active = skill === s.cmd;
           return (
@@ -1504,7 +1785,7 @@ function CreativeStudio({ product, setProduct, objective, setObjective, campaign
 
       {creative && (
         <>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 2.1fr", gap: 14, marginTop: 14 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 2.1fr", gap: 14, marginTop: 14 }}>
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <Card>
                 <Label>URL DIAGNOSIS</Label>
@@ -1530,16 +1811,16 @@ function CreativeStudio({ product, setProduct, objective, setObjective, campaign
               <Card>
                 <Pill color={T.red} bg={T.redSoft}>GUARDRAILS ACTIVE</Pill>
                 <p style={{ fontSize: 13, lineHeight: 1.65, marginTop: 10, fontWeight: 600 }}>
-                  No disease-cure claims · no "reverses aging" · no implied vet endorsement without substantiation.
+                  {guardrailsFor(p?.name || campaign?.product || product).text}
                 </p>
                 <div style={{ marginTop: 8 }}>
-                  <Cite src={(campaign?.product || product).includes("Palmolive") ? "brand_guidelines_palmolive.md" : "brand_guidelines_hills.md"} />
+                  <Cite src={guardrailsFor(p?.name || campaign?.product || product).cite} />
                 </div>
               </Card>
             </div>
 
             <div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12 }}>
                 {creative.assets.map((a) => (
                   <AssetTile key={a.id} a={a} onCost={refreshCost} />
                 ))}
@@ -1842,6 +2123,7 @@ function History({ onOpen }) {
 
 /* ================= ASSET LIBRARY (below the divider) ================= */
 function Library({ onCost }) {
+  const isMobile = useIsMobile();
   const [stats, setStats] = useState({ assets_stored: 0, image_spend_usd: 0, cache_hits: 0, dollars_saved_usd: 0 });
   const [assets, setAssets] = useState([]);
   const [brand, setBrand] = useState("");
@@ -1915,11 +2197,11 @@ function Library({ onCost }) {
         sub="Every generated asset, priced. The system never pays twice for the same prompt — repeats are served from cache at $0.00. This shelf survives every redeploy on a mounted volume."
       />
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: 14 }}>
         {statCards.map((s) => (
           <Card key={s.l} style={{ padding: "18px 22px" }}>
             <Label>{s.l.toUpperCase()}</Label>
-            <div style={{ fontFamily: T.serif, fontSize: 40, marginTop: 6, color: s.c || T.ink }}>{s.v}</div>
+            <div style={{ fontFamily: T.serif, fontSize: isMobile ? 30 : 40, marginTop: 6, color: s.c || T.ink }}>{s.v}</div>
           </Card>
         ))}
       </div>
@@ -1928,6 +2210,7 @@ function Library({ onCost }) {
         {chip(brand === "", () => setBrand(""), "All brands")}
         {chip(brand === "hills", () => setBrand("hills"), "Hill's")}
         {chip(brand === "palmolive", () => setBrand("palmolive"), "Palmolive")}
+        {chip(brand === "skin_health", () => setBrand("skin_health"), "Skin Health")}
         <span style={{ width: 1, background: T.line, margin: "0 4px" }} />
         {["", "/product-shoot", "/amazon", "/meta", "/bundle"].map((sk) =>
           chip(skill === sk, () => setSkill(sk), sk || "All skills")

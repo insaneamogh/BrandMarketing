@@ -416,7 +416,10 @@ async def run_video(creative_id: int) -> dict:
             frames = copy.get("storyboard_6_frames", [])
             frames = " ".join(str(f) for f in frames) if isinstance(frames, list) else str(frames)
             prompt = (f"Cinematic 5-second product commercial for {profile.name} "
-                      f"({profile.category}). {frames}".strip())
+                      f"({profile.category}): one continuous slow push-in on the "
+                      f"product in a premium real-world setting, warm directional "
+                      f"lighting, rich color grade, no on-screen text or logos "
+                      f"beyond the pack label. {frames}".strip())
 
         if not video_client.enabled():
             result = {"status": "disabled", "prompt": prompt,
@@ -547,8 +550,13 @@ def campaign_history() -> dict:
 
 # ---------------- library ----------------
 def _brand_key(profile: ProductProfile) -> str:
-    t = (profile.name + profile.category).lower()
-    return "palmolive" if any(k in t for k in ("palmolive", "skin", "soap", "shower")) else "hills"
+    """Same family mapping as agents.creative — used for the library brand filter."""
+    t = (profile.name + " " + profile.category).lower()
+    if any(k in t for k in ("eltamd", "filorga", "ncef", "pca skin", "sunscreen", "spf", "serum", "anti-aging", "skincare")):
+        return "skin_health"
+    if any(k in t for k in ("palmolive", "soap", "shower", "body wash", "hand wash")):
+        return "palmolive"
+    return "hills"
 
 
 def _cache_lookup(prompt_hash: str):

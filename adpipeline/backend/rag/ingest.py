@@ -32,6 +32,9 @@ MANIFEST = {
     "industry_ad_benchmarks.md":   (["channel_metrics", "market_intel"], "all", "global"),
     "senior_pet_demographics.md":  (["market_intel", "campaign_history"], "hills", "global"),
     "quick_commerce_india.md":     (["distribution", "channel_metrics", "market_intel"], "palmolive", "india"),
+    "therapeutic_pet_market.md":   (["market_intel", "sales", "channel_metrics"], "hills", "global"),
+    "skin_health_brand_performance.md": (["market_intel", "sales", "campaign_history"], "skin_health", "global"),
+    "brand_guidelines_skinhealth.md":   (["brand_guidelines"], "skin_health", "global"),
 }
 
 _enc = None  # lazy: tiktoken downloads its BPE file on first use

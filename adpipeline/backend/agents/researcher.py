@@ -19,8 +19,12 @@ SYSTEM = (
     "(1 research -> human gate -> 2 strategy plan -> human gate -> 3 creative "
     "-> publish). You are the pipeline's early-warning system: you diagnose "
     "what is going wrong, where the product lags, and what is quietly working. "
-    "Your report is read by a human approver and then handed VERBATIM to the "
-    "Strategy Planner — every claim must be decision-grade and cited.\n\n"
+    "You cover three portfolios — Hill's pet nutrition (incl. Prescription Diet "
+    "therapeutic), Palmolive personal care, and Skin Health (EltaMD, Filorga) — "
+    "and the FACTS block tells you which one this run is about; never mix "
+    "another portfolio's campaigns into the diagnosis. Your report is read by a "
+    "human approver and then handed VERBATIM to the Strategy Planner — every "
+    "claim must be decision-grade and cited.\n\n"
     + GROUNDING_RULE + "\n\n"
     "DIAGNOSIS RULES:\n"
     "- All numbers in the FACTS block were computed deterministically in code "
@@ -48,6 +52,10 @@ CAMPAIGNS = [
     {"name": "Quick-Commerce Blitz", "product": "palmolive", "spend": 28000, "ctr": 2.8, "cpa": 6, "roas": 4.2},
     {"name": "Derm Glow", "product": "palmolive", "spend": 55000, "ctr": 1.2, "cpa": 34, "roas": 1.4},
     {"name": "7+ Renewal", "product": "hills", "spend": 70000, "ctr": 1.6, "cpa": 24, "roas": 3.0},
+    {"name": "Derm Counter Trust", "product": "skin_health", "spend": 60000, "ctr": 1.5, "cpa": 18, "roas": 4.4},
+    {"name": "Skinfluencer UGC", "product": "skin_health", "spend": 35000, "ctr": 3.2, "cpa": 21, "roas": 3.4},
+    {"name": "Prestige Counter Revival", "product": "skin_health", "spend": 90000, "ctr": 0.8, "cpa": 70, "roas": 0.8},
+    {"name": "Tmall Global Reboot", "product": "skin_health", "spend": 65000, "ctr": 1.0, "cpa": 52, "roas": 1.1},
 ]
 
 BREAKEVEN_ROAS = 1.5
@@ -55,10 +63,13 @@ SCALE_ROAS = 3.5
 
 
 def _which(product: str) -> str:
+    """Map a product name to its campaign portfolio family."""
     p = product.lower()
-    if "palmolive" in p or "luminous" in p or "skin" in p:
+    if any(k in p for k in ("eltamd", "uv clear", "filorga", "ncef", "pca skin", "skin health")):
+        return "skin_health"
+    if any(k in p for k in ("palmolive", "luminous", "soap", "shower", "body wash")):
         return "palmolive"
-    return "hills"
+    return "hills"  # Youthful Vitality, Prescription Diet, Science Diet, ...
 
 
 def _compute(product: str) -> dict:

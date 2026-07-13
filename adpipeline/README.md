@@ -149,6 +149,30 @@ npm run dev                 # Vite on :5173, proxies API to :8000
 
 Open http://localhost:5173. `GET /health` shows which providers are live.
 
+## Verify your setup (no paid API calls)
+
+```bash
+cd backend
+DATA_DIR=/tmp/adp-verify python verify_setup.py   # 8 checks, all must PASS
+cd ../frontend && npm run build                   # must compile cleanly
+```
+
+The suite asserts: routes registered (chained + solo), all 5 products map to a
+campaign family, `campaign_history.md` numbers match the researcher's math table
+exactly, all corpus docs are registered and present, brand-key mapping agrees
+across agents, URL-diagnosis fallbacks cover every product, every image prompt
+template renders, and the DB micro-migration + solo gate guard work.
+
+## Products (5, across 3 portfolios)
+
+| Product | Portfolio | Story |
+|---|---|---|
+| Hill's Youthful Vitality | hills | steady senior-pet line |
+| Hill's Prescription Diet k/d | hills | high-margin therapeutic winner (vet channel) |
+| Palmolive Luminous Oils | palmolive | mass-premium, quick-commerce play |
+| EltaMD UV Clear SPF 46 | skin_health | prestige winner (#1 derm-recommended) |
+| Filorga NCEF-Reverse | skin_health | premium struggler (below break-even flights) |
+
 ## Environment
 
 ```
@@ -166,9 +190,10 @@ All optional model-id overrides are documented in `.env.example`.
 
 ## ⬜ What's left for you (the only two things)
 
-1. **Extend the RAG corpus (optional)** — the 12 files in `backend/rag/corpus/*.md`
+1. **Extend the RAG corpus (optional)** — the 15 files in `backend/rag/corpus/*.md`
    mix REAL public data (Hill's FY2024 financials, 2025 Meta/Amazon ad benchmarks,
-   India quick-commerce market data, senior-pet demographics, Filorga impairments)
+   India quick-commerce market data, senior-pet demographics, Filorga impairments,
+   the therapeutic pet-diet market, EltaMD's derm-channel story)
    with realistic internal mock data; every file states its provenance at the top,
    and mock figures are cross-checked against the real benchmarks so retrieval never
    contradicts itself. Plain markdown, tables welcome; paragraphs chunk to ~300
