@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   BarChart10, Brush01, Check, CheckCircle, ClockRewind, Compass03, Diamond01,
   Edit02, HelpCircle, LayersTwo01, Link01, Menu01, RefreshCcw01, Rocket02,
-  SearchLg, Stars01, Target04, Trash01, Upload01, XClose,
+  SearchLg, Stars01, Target04, Trash01, Upload01, VideoRecorder, XClose,
 } from "@untitled-ui/icons-react";
 
 // ============================================================
@@ -2442,10 +2442,13 @@ function Library({ onCost }) {
   const isMobile = useIsMobile();
   const [stats, setStats] = useState({ assets_stored: 0, image_spend_usd: 0, cache_hits: 0, dollars_saved_usd: 0 });
   const [assets, setAssets] = useState([]);
+  const [videos, setVideos] = useState([]);
   const [brand, setBrand] = useState("");
   const [skill, setSkill] = useState("");
   const [cacheOnly, setCacheOnly] = useState(false);
   const [busy, setBusy] = useState(0);
+  const [uploading, setUploading] = useState(false);
+  const videoFileRef = useRef(null);
 
   const load = async () => {
     const qs = new URLSearchParams();
@@ -2453,18 +2456,51 @@ function Library({ onCost }) {
     if (skill) qs.set("skill", skill);
     if (cacheOnly) qs.set("cache_only", "true");
     try {
-      const [s, l] = await Promise.all([
+      const [s, l, v] = await Promise.all([
         api("/library/stats"),
         api(`/library?${qs.toString()}`),
+        api("/videos"),
       ]);
       setStats(s);
       setAssets(l.assets);
+      setVideos(v.videos || []);
     } catch {}
   };
 
   useEffect(() => {
     load();
   }, [brand, skill, cacheOnly]);
+
+  const uploadVideo = async (e) => {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", f);
+      const r = await fetch("/video/upload", { method: "POST", body: fd });
+      if (!r.ok) throw new Error((await r.text()) || r.statusText);
+      await load();
+    } catch (e) {
+      alert(String(e.message || e));
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const delVideo = async (creativeId) => {
+    if (!window.confirm("Delete this video? This removes it from the library permanently.")) return;
+    setBusy(`v${creativeId}`);
+    try {
+      await api(`/videos/${creativeId}`, { method: "DELETE" });
+      await load();
+    } catch (e) {
+      alert(String(e.message || e));
+    } finally {
+      setBusy(0);
+    }
+  };
 
   const act = async (id, kind) => {
     setBusy(id);
@@ -2547,6 +2583,24 @@ function Library({ onCost }) {
         )}
         <span style={{ width: 1, background: T.line, margin: "0 4px" }} />
         {chip(cacheOnly, () => setCacheOnly((c) => !c), "Cache hits")}
+        <button
+          onClick={() => videoFileRef.current?.click()}
+          disabled={uploading}
+          title="Upload a finished video (no Seedance key or existing creative needed)"
+          style={{
+            display: "inline-flex", alignItems: "center", gap: 7,
+            fontFamily: T.mono, fontSize: 12, fontWeight: 600,
+            padding: "7px 14px", borderRadius: 99,
+            cursor: uploading ? "wait" : "pointer",
+            border: `1px solid ${T.blueBorder}`,
+            background: uploading ? T.blueSoft : "rgba(255,255,255,0.7)",
+            color: T.blue,
+          }}
+        >
+          <VideoRecorder width={14} height={14} />
+          {uploading ? "Uploading…" : "Upload video"}
+        </button>
+        <input ref={videoFileRef} type="file" accept="video/mp4" onChange={uploadVideo} style={{ display: "none" }} />
       </div>
 
       {assets.length === 0 ? (
@@ -2594,6 +2648,42 @@ function Library({ onCost }) {
                     <Trash01 width={14} height={14} />
                   </button>
                 </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div style={{ marginTop: 28, marginBottom: 14, display: "flex", alignItems: "center", gap: 10 }}>
+        <Label>VIDEOS</Label>
+        <span style={{ fontSize: 12, color: T.faint }}>{videos.length} stored</span>
+      </div>
+      {videos.length === 0 ? (
+        <Empty label='No videos yet. Use "Upload video" above, or render one via Seedance in a /bundle creative.' />
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(280px, 1fr))", gap: 14 }}>
+          {videos.map((v) => (
+            <div key={v.creative_id} style={{ ...glass, borderRadius: 14, overflow: "hidden", padding: 0 }}>
+              <video controls src={v.url} style={{ width: "100%", display: "block", aspectRatio: "16/9", objectFit: "cover", background: "#0B1D33" }} />
+              <div style={{ padding: "12px 15px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                  <span style={{ fontSize: 13.5, fontWeight: 700 }}>{v.product}</span>
+                  <span style={{ fontFamily: T.mono, fontSize: 10.5, color: T.faint }}>#{v.creative_id}</span>
+                </div>
+                <div style={{ fontFamily: T.mono, fontSize: 10.5, color: T.soft, marginTop: 5 }}>
+                  {v.campaign_id ? `camp ${String(v.campaign_id).padStart(3, "0")}` : "library"} · {v.skill || "-"} · ${v.cost_usd.toFixed(2)}
+                </div>
+                <button
+                  onClick={() => delVideo(v.creative_id)}
+                  disabled={busy === `v${v.creative_id}`}
+                  style={{
+                    ...miniBtn(false), width: "100%", marginTop: 10,
+                    color: T.red, border: `1px solid rgba(217,54,54,0.4)`,
+                    display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
+                  }}
+                >
+                  <Trash01 width={14} height={14} /> Delete
+                </button>
               </div>
             </div>
           ))}

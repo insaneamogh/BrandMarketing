@@ -241,16 +241,35 @@ def get_video(creative_id: int):
 
 
 @app.post("/video/upload")
-async def upload_video(creative_id: int = Form(...), file: UploadFile = File(...),
+async def upload_video(file: UploadFile = File(...), creative_id: int | None = Form(None),
                        prompt: str | None = Form(None), cost_usd: float = Form(0.0)):
-    """Attach an already-made video (e.g. rendered by hand elsewhere) to a
-    creative. Written in the same on-disk path and JSON shape as a real
-    Seedance render, so it plays and displays identically - no 'uploaded' tag."""
+    """Attach an already-made video (e.g. rendered by hand elsewhere, or when
+    you don't have a SEEDANCE_API_KEY) to a creative. Pass creative_id to
+    attach to a specific /bundle creative; omit it for a quick upload that
+    creates a minimal container automatically, so it shows up straight in the
+    Library's video shelf. Same on-disk path/JSON shape as a real Seedance
+    render either way - no 'uploaded' marker."""
     try:
         data = await file.read()
-        return orchestrator.upload_video(creative_id, data, prompt, cost_usd)
+        if creative_id:
+            return orchestrator.upload_video(creative_id, data, prompt, cost_usd)
+        return orchestrator.quick_upload_video(data, file.filename or "", cost_usd)
     except ValueError as e:
         raise HTTPException(400, str(e))
+
+
+@app.get("/videos")
+def list_videos():
+    """Every finished video across every campaign - the Library's video shelf."""
+    return orchestrator.video_list()
+
+
+@app.delete("/videos/{creative_id}")
+def delete_video(creative_id: int):
+    try:
+        return orchestrator.delete_video(creative_id)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
 
 
 # ---------------- reference images ----------------

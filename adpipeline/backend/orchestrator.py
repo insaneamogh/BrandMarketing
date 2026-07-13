@@ -15,6 +15,7 @@ that stage's re-run prompt and only marked consumed after a SUCCESSFUL re-run.
 import asyncio
 import hashlib
 import json
+import re
 from pathlib import Path
 
 from sqlalchemy import func
@@ -622,6 +623,87 @@ def upload_video(creative_id: int, mp4: bytes, prompt: str = None,
         creative.video_json = json.dumps(result)
         db.commit()
         return result
+    finally:
+        db.close()
+
+
+def quick_upload_video(mp4: bytes, filename: str = "", cost_usd: float = 0.0) -> dict:
+    """Upload a video with NO existing campaign/creative required - e.g. when
+    you have finished clips but no SEEDANCE_API_KEY to have rendered them
+    through the pipeline. Creates a minimal solo container automatically, then
+    attaches the file via upload_video() - same on-disk path/JSON shape as a
+    real render, so it shows up in the Library's video shelf indistinguishably.
+    """
+    if not mp4:
+        raise ValueError("empty upload")
+    stem = (filename or "").rsplit(".", 1)[0]
+    name = re.sub(r"[-_+]+", " ", stem).strip().title() or "Uploaded video"
+    db = SessionLocal()
+    try:
+        c = Campaign(product=name, objective="Manually uploaded video asset",
+                     status="solo_creative", mode="solo")
+        db.add(c)
+        db.commit()
+        db.refresh(c)
+        profile = ProductProfile(name=name, category="Uploaded video asset",
+                                 key_claims=[], pack_description="",
+                                 brand_colors=[], price_tier="premium")
+        cr = Creative(campaign_id=c.id, url=f"upload:{name}", skill="/bundle",
+                      profile_json=profile.model_dump_json(), copy_json="{}")
+        db.add(cr)
+        db.commit()
+        db.refresh(cr)
+        creative_id = cr.id
+    finally:
+        db.close()
+    return upload_video(creative_id, mp4, prompt=None, cost_usd=cost_usd)
+
+
+def video_list() -> dict:
+    """Every finished video across every campaign/creative - the Library's
+    video shelf, alongside the image Asset Library."""
+    db = SessionLocal()
+    try:
+        rows = (db.query(Creative)
+                .filter(Creative.video_json.isnot(None))
+                .order_by(Creative.id.desc()).all())
+        out = []
+        for cr in rows:
+            v = json.loads(cr.video_json or "{}")
+            if v.get("status") != "done":
+                continue
+            profile = json.loads(cr.profile_json) if cr.profile_json else {}
+            out.append({
+                "creative_id": cr.id, "campaign_id": cr.campaign_id,
+                "product": profile.get("name") or (cr.campaign.product if cr.campaign else ""),
+                "skill": cr.skill, "url": v.get("url", f"/videos/{cr.id}"),
+                "cost_usd": round(float(v.get("cost_usd") or 0.0), 3),
+                "created_at": cr.created_at.isoformat() + "Z",
+            })
+        return {"videos": out}
+    finally:
+        db.close()
+
+
+def delete_video(creative_id: int) -> dict:
+    """Remove a video from a creative (image assets on the same creative, if
+    any, are untouched - this only clears the video_json + its mp4 file)."""
+    db = SessionLocal()
+    try:
+        cr = db.get(Creative, creative_id)
+        if not cr or not cr.video_json:
+            raise ValueError("video not found")
+        cr.video_json = None
+        db.commit()
+        file_deleted = False
+        path = ASSETS_DIR / f"video_{creative_id}.mp4"
+        try:
+            if path.exists():
+                path.unlink()
+                file_deleted = True
+        except Exception:
+            pass
+        return {"deleted": creative_id, "file_deleted": file_deleted}
     finally:
         db.close()
 
