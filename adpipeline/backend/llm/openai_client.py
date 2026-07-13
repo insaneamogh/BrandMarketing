@@ -6,7 +6,7 @@ from typing import List, Optional
 
 from openai import OpenAI
 
-from config import MODEL_EMBED_OPENAI, MODEL_IMAGE, OPENAI_API_KEY
+from config import EMBED_DIM, MODEL_EMBED_OPENAI, MODEL_IMAGE, OPENAI_API_KEY
 from llm import cost
 
 _client: Optional[OpenAI] = None
@@ -76,7 +76,10 @@ def vision_json(model: str, system: str, user: str, image_urls: List[str],
 
 
 def embed(texts: List[str]) -> List[List[float]]:
-    resp = client().embeddings.create(model=MODEL_EMBED_OPENAI, input=texts)
+    # request EMBED_DIM (768) so an OpenAI-built index matches the config and
+    # the Gemini-dim convention; text-embedding-3-small supports `dimensions`.
+    resp = client().embeddings.create(
+        model=MODEL_EMBED_OPENAI, input=texts, dimensions=EMBED_DIM)
     tokens = resp.usage.total_tokens if resp.usage else 0
     cost.log_call(MODEL_EMBED_OPENAI, "embed", tokens_in=tokens)
     return [d.embedding for d in resp.data]

@@ -14,7 +14,7 @@ from pathlib import Path
 
 import tiktoken
 
-from config import CHROMA_DIR, CORPUS_DIR
+from config import CHROMA_DIR, CORPUS_DIR, EMBED_PROVIDER
 from rag import store
 
 # file -> (collections, product, region)
@@ -75,8 +75,12 @@ def _chunk(text: str, target_tokens: int = 300):
 
 
 def corpus_fingerprint() -> str:
-    """Hash of the manifest + every corpus file's bytes - detects any change."""
+    """Hash of the manifest + every corpus file's bytes + the embed provider -
+    detects any change. The provider is included so switching EMBED_PROVIDER
+    (e.g. gemini -> openai to make retrieval cap-immune) auto-triggers a clean
+    re-embed instead of querying a stale, wrong-vector-space index."""
     h = hashlib.sha256()
+    h.update(f"embed_provider={EMBED_PROVIDER}".encode())
     for fname in sorted(MANIFEST):
         h.update(fname.encode())
         h.update(repr(MANIFEST[fname]).encode())

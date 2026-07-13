@@ -52,8 +52,20 @@ def retrieve(collection: Optional[str], query: str, k: int = 4) -> List[dict]:
     """Return top-k chunks. `collection` filters the metadata group (or None=all).
 
     Each result: {text, source, collection, product, region, score}.
-    """
-    emb = router.embed([query])[0]
+
+    RESILIENT: embedding the query needs the embed provider (Gemini free tier by
+    default). If that provider is rate-capped, we return [] rather than throw -
+    agents are built to handle "(no context retrieved)" and their own text calls
+    still fall back to gpt-4o-mini. Cross-provider embed fallback is deliberately
+    NOT done: a query vector from a different model lives in a different vector
+    space and would return semantically random chunks (worse than no context).
+    To make retrieval itself cap-immune, set EMBED_PROVIDER=openai (auto re-
+    ingests) so the whole RAG layer never touches the Gemini free tier."""
+    try:
+        emb = router.embed([query])[0]
+    except Exception as e:
+        print(f"[retrieve] embedding unavailable, serving no context: {e}")
+        return []
     where = {"collection": collection} if collection else None
     res = _get_col().query(
         query_embeddings=[emb], n_results=k, where=where,

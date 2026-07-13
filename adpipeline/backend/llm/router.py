@@ -2,10 +2,16 @@
 
 pick_model(task) -> model id (Gemini free tier for all text/vision).
 chat_json / vision_json dispatch on the model id prefix:
-    gemini-*  -> gemini_client (free)  -> on failure, gpt-4o-mini fallback
+    gemini-*  -> gemini_client (free)  -> on ANY failure (incl. a daily free-tier
+                 quota cap, which now fails fast), gpt-4o-mini fallback
     gpt-*     -> openai_client (paid)
-embed() dispatches on EMBED_PROVIDER (no silent fallback - the Chroma index is
-dimension-locked to one provider; delete DATA_DIR/chroma before switching).
+So when the Gemini free tier is exhausted for the day, every text + vision call
+transparently continues on gpt-4o-mini (~$0.001/call) - the demo never dies.
+embed() dispatches on EMBED_PROVIDER. There is NO cross-provider embed fallback
+(a query vector from another model lives in a different vector space -> random
+retrieval); instead store.retrieve degrades to no-context if the embed provider
+is capped, and the corpus fingerprint includes EMBED_PROVIDER so flipping it to
+openai auto re-ingests a cap-immune index.
 generate_image() dispatches on IMAGE_PROVIDER (openai = the $10 budget,
 gemini = free-tier drafts).
 Agents stay declarative: they name a task, never a provider.

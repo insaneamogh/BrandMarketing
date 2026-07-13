@@ -214,7 +214,8 @@ DEMO_MODE=true              # image gen falls back to /cache on any API failure 
 MAX_IMAGE_CALLS_PER_RUN=6   # hard cap on paid image calls per creative run
 DATA_DIR=                   # persistent dir (Railway Volume /data); local default: adpipeline/data
 IMAGE_PROVIDER=openai       # or gemini for free-tier draft images
-EMBED_PROVIDER=gemini       # delete DATA_DIR/chroma if you ever switch providers
+EMBED_PROVIDER=gemini       # gemini (free) | openai (cap-immune retrieval, ~$0.0003/corpus);
+                            # switching auto re-embeds - no manual chroma deletion needed
 ```
 
 All optional model-id overrides are documented in `.env.example`.
@@ -267,7 +268,15 @@ All optional model-id overrides are documented in `.env.example`.
 - Agents answer **only** from retrieved chunks; numbers copied verbatim; banned-claim
   guidelines enforced in the planner + copywriter; expected-metric probabilities are
   instructed to stay calibrated (capped at 0.85 unless the data matches exactly).
-- Gemini 429s: 2 backoff retries, then a gpt-4o-mini fallback so a live demo never dies.
+- Gemini free-tier caps never kill the demo. Per-minute 429s get 2 short backoff
+  retries; a DAILY quota cap fails fast (no wasted waiting) and EVERY text + vision
+  call transparently continues on `gpt-4o-mini` (~$0.001/call). Retrieval is the
+  one path with no cross-provider fallback (a foreign-model query vector would
+  return random chunks), so it degrades to no-context instead of crashing - the
+  researcher still has its precomputed FACTS, the planner its approved research.
+  To make retrieval itself cap-immune, set `EMBED_PROVIDER=openai`: the corpus
+  fingerprint includes the provider, so it auto re-embeds a clean index on next
+  boot (embeddings cost ~$0.0003 for the whole corpus).
 
 ## API
 

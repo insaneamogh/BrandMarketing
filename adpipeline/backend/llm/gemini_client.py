@@ -30,14 +30,29 @@ def client():
     return _client
 
 
+def _is_daily_cap(msg: str) -> bool:
+    """A daily free-tier quota is exhausted (as opposed to a per-minute burst).
+    These will NOT recover within a short retry window, so we must fail fast and
+    let the router fall back to gpt-4o-mini immediately instead of sleeping."""
+    m = msg.lower()
+    return ("perday" in m or "per day" in m or "per-day" in m
+            or "requests per day" in m or "daily" in m
+            or ("quota" in m and "perminute" not in m and "per minute" not in m))
+
+
 def _with_retry(fn, retries: int = 2):
-    """Free-tier RPM limits surface as 429/RESOURCE_EXHAUSTED. Back off and retry."""
+    """Free-tier PER-MINUTE limits surface as 429/RESOURCE_EXHAUSTED and clear in
+    a few seconds - back off and retry those. A DAILY quota cap (or any
+    non-transient error) is raised immediately so the caller's gpt-4o-mini
+    fallback kicks in without a pointless ~9s wait."""
     for attempt in range(retries + 1):
         try:
             return fn()
         except Exception as e:
             msg = str(e)
-            transient = "429" in msg or "RESOURCE_EXHAUSTED" in msg or "503" in msg
+            transient = ("503" in msg
+                         or (("429" in msg or "RESOURCE_EXHAUSTED" in msg)
+                             and not _is_daily_cap(msg)))
             if not transient or attempt == retries:
                 raise
             time.sleep(3 * (attempt + 1))
