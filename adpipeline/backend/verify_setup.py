@@ -78,19 +78,23 @@ def main() -> int:
         assert a == b == want, f"{p.name}: creative={a} orchestrator={b} want={want}"
     print("[5] PASS  _brand_key consistent across creative agent + orchestrator")
 
-    # [6] URL-diagnosis fallbacks route every product family
+    # [6] URL-diagnosis fallbacks route every product family + generic 'Other'
     import url_diagnosis as ud
-    assert set(ud._FALLBACKS) == {"hills", "hills_rx", "palmolive", "eltamd", "filorga"}
+    assert set(ud._FALLBACKS) == {"hills", "hills_rx", "palmolive", "eltamd",
+                                  "filorga", "generic"}
     for hint, want in [
         ("hillspet.com/pd-kd-canine", "hills_rx"),
         ("eltamd.com/uv-clear", "eltamd"),
         ("filorga ncef reverse", "filorga"),
         ("palmolive body wash", "palmolive"),
         ("youthful vitality", "hills"),
+        ("https://example.com/some-unknown-gadget-2000", "generic"),
     ]:
         got = ud._guess_family(hint)
         assert got == want, f"{hint} -> {got}, want {want}"
-    print("[6] PASS  url_diagnosis fallbacks cover all 5 products")
+    gen = ud._fallback("https://example.com/products/acme-wireless-charger")
+    assert gen.name == "Acme Wireless Charger", gen.name
+    print("[6] PASS  url_diagnosis fallbacks cover all 5 products + generic 'Other'")
 
     # [7] Every skill image template renders with a full profile (no KeyError,
     #     no unresolved placeholder)

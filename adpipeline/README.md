@@ -295,6 +295,8 @@ GET  /references/{id}                 serve an uploaded reference
 GET  /assets/{id}                     serve generated/cached image (reads from DATA_DIR)
 POST /assets/{id}/variant             {prompt?} re-render, optionally with a user-edited prompt
 POST /assets/{id}/reuse               duplicate an asset onto the shelf ($0)
+DELETE /assets/{id}                   delete an asset (file removed when unreferenced)
+POST /refine                          {product, objective} -> Gemini-sharpened campaign objective
 GET  /library?brand=&skill=&cache_only=   asset shelf with filters
 GET  /library/stats                   assets, image spend, cache hits, dollars saved
 GET  /prompts                         the exact system prompt each agent runs with

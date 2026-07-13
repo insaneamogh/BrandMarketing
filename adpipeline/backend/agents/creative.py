@@ -215,36 +215,62 @@ def render_one(prompt: str, aspect: str, kind: str, calls: int,
 PROMPT_WRITER_SYSTEM = (
     "You are AGENT 3 - CREATIVE (senior art director + prompt engineer) in a "
     "3-agent CPG marketing pipeline. You compile the final image-generation "
-    "prompt for ONE advertising asset. A HUMAN reviews and approves your prompt "
-    "BEFORE any image model is called - it is the last checkpoint before money "
-    "moves, so it must be production-ready, not a sketch.\n\n"
+    "prompt for ONE advertising asset destined for a REAL Amazon listing or "
+    "Meta campaign. A HUMAN reviews and approves your prompt BEFORE any image "
+    "model is called - it is the last checkpoint before money moves, so it "
+    "must read like a shot brief from a top commercial studio, not a sketch.\n\n"
     "You receive: the PRODUCT CREATIVE CONTEXT (product knowledge + approved "
     "campaign brief + brand guidelines), the ASSET JOB (this asset type's "
-    "specific communication job and creative direction), and a BASE TEMPLATE "
-    "whose constraints are non-negotiable.\n\n"
+    "specific communication job and creative direction), a BASE TEMPLATE whose "
+    "constraints are non-negotiable, and SCENES ALREADY USED in this campaign.\n\n"
     "COMPILE RULES:\n"
-    "- Write ONE prompt of 120-200 words in concrete visual language: subject "
-    "and action first, then scene/environment, composition for the stated "
-    "aspect ratio, camera and lens feel, NAMED lighting design, material/"
-    "texture behavior, and a color grade anchored to the brand palette.\n"
-    "- Execute the ASSET JOB exactly - a product shoot sells desirability, an "
-    "infographic answers ONE question, a 4:5 stops the scroll with ONE idea, a "
-    "9:16 has vertical momentum, a bundle sells the system. Choose the "
-    "framework the ASSET JOB offers that best fits the campaign angle, and "
-    "commit to it.\n"
-    "- The packaging description in the context is ground truth - describe the "
-    "pack faithfully; never contradict or embellish it.\n"
-    "- Every HARD CONSTRAINT in the base template survives verbatim in your "
-    "prompt (pure white background, no baked-in text, reserved overlay zones, "
-    "compliance rules). Restate them explicitly.\n"
+    "- Write ONE prompt of 140-220 words in concrete visual language, in this "
+    "order: (1) subject and action, (2) the exact product - full name visible "
+    "on its pack, pack described faithfully from the context, (3) environment "
+    "with foreground / midground / background layers, (4) composition for the "
+    "stated aspect ratio including where the negative space sits, (5) camera: "
+    "shot type + focal length feel + aperture behavior, (6) lighting: one NAMED "
+    "key source + fill/rim behavior + how it interacts with the pack material, "
+    "(7) texture callouts (what must feel tactile), (8) color grade anchored to "
+    "the brand palette + overall mood.\n"
+    "- THE PRODUCT IS THE POINT: name the product verbatim at least once and "
+    "state that its label/pack must be clearly legible and rendered exactly as "
+    "described. A viewer must know WHICH product this ad is for at a glance.\n"
+    "- Execute the ASSET JOB exactly - pick ONE framework it offers (the one "
+    "that best fits the campaign angle) and commit; never hedge across two.\n"
+    "- VARIATION: your scene must be visibly distinct from every entry in "
+    "SCENES ALREADY USED - different environment, camera angle, time of day or "
+    "palette temperature. Never reuse a previous scene concept.\n"
+    "- Every HARD CONSTRAINT in the base template survives verbatim (pure white "
+    "background, no baked-in text, reserved overlay zones, compliance rules). "
+    "Restate them explicitly.\n"
     "- Use ONLY approved claims from the context; no invented text, statistics, "
     "badges, awards or certifications; no competitor references; no words or "
     "letters anywhere in the image except the pack's own label.\n"
-    "- Never write generic filler ('stunning', 'high quality', '8k') - every "
-    "sentence must change what the camera sees.\n"
-    'Return a single JSON object only: {"prompt": str}. No markdown, no prose '
-    "outside the JSON."
+    "- BANNED WORDS: 'stunning', 'beautiful', 'high quality', '8k', 'ultra-"
+    "realistic', 'masterpiece' - every sentence must change what the camera "
+    "sees, not grade the output.\n"
+    'Return a single JSON object only: {"prompt": str, "scene_summary": str} '
+    "where scene_summary is a 10-word description of your scene for the "
+    "variation ledger. No markdown, no prose outside the JSON."
 )
+
+
+def _identity_block(profile: ProductProfile) -> str:
+    """Deterministic product-identity suffix appended to EVERY final image
+    prompt in code - guarantees the image model always receives the exact
+    product name, pack, palette and features, no matter what the writer or a
+    human edit dropped."""
+    claims = "; ".join(profile.key_claims[:4]) if profile.key_claims else ""
+    return (
+        f"PRODUCT IDENTITY (non-negotiable): the product is {profile.name} "
+        f"({profile.category}). THE PACK, render exactly as described: "
+        f"{profile.pack_description}. The pack's own label text reads "
+        f"'{profile.name}' and must be clearly legible. Brand palette: "
+        f"{', '.join(profile.brand_colors)}."
+        + (f" Product truths the scene may visualize (never as on-image text): "
+           f"{claims}." if claims else "")
+    )
 
 
 def _fill_template(spec: dict, profile: ProductProfile) -> str:
@@ -272,47 +298,55 @@ def build_context(profile: ProductProfile, plan_summary: str = "",
 
 
 def draft_one(spec: dict, profile: ProductProfile, context: str,
-              prompt_tweak: str = "") -> dict:
+              prompt_tweak: str = "", prior_scenes: list = None) -> dict:
     """Compile ONE asset's final image prompt.
 
     locked specs (amazon_main) render their compliance template verbatim -
     never LLM-rewritten. Everything else goes through the asset-specific
     builder + the prompt-writer model; deterministic template on any failure.
-    The PRODUCT FIDELITY BLOCK is appended in code, never left to the model.
-    Returns {kind, aspect, prompt, est_cost_usd, n}.
+    prior_scenes: 10-word summaries of scenes already compiled in this run -
+    the writer must produce something visibly distinct (the variation ledger).
+    The PRODUCT IDENTITY + FIDELITY blocks are appended in code, never left to
+    the model. Returns {kind, aspect, prompt, est_cost_usd, n, scene}.
     """
     base = _fill_template(spec, profile)
     if prompt_tweak:
         base = f"{base} Art direction from the marketing team: {prompt_tweak.strip()}"
+    suffix = f"{_identity_block(profile)} {prompt_builders.FIDELITY_BLOCK}"
     out = {
         "kind": spec["kind"], "aspect": spec["aspect"], "n": 1,
         "est_cost_usd": tier_cost(quality_for(spec["kind"]), spec["aspect"]),
+        "scene": "",
     }
 
     if spec.get("locked"):
-        out["prompt"] = f"{base} {prompt_builders.FIDELITY_BLOCK}"
+        # compliance template verbatim; identity still rides along for the model
+        out["prompt"] = f"{base} {suffix}"
         return out
 
     builder = prompt_builders.get_builder(spec.get("builder", "product_shoot"))
+    used = "\n".join(f"- {s}" for s in (prior_scenes or [])) or "(none yet)"
     try:
         user = (
             f"{context}\n\n"
             f"ASSET JOB AND CREATIVE DIRECTION:\n{builder}\n\n"
             f"BASE TEMPLATE (its hard constraints are non-negotiable):\n{base}\n\n"
             f"ASPECT RATIO: {spec['aspect']}\n"
-            f"ART DIRECTION FROM THE MARKETING TEAM: {prompt_tweak.strip() or 'none'}\n\n"
+            f"ART DIRECTION FROM THE MARKETING TEAM: {prompt_tweak.strip() or 'none'}\n"
+            f"SCENES ALREADY USED IN THIS CAMPAIGN (yours must be visibly distinct):\n{used}\n\n"
             "Compile the single production-ready image prompt now."
         )
-        data = router.chat_json("image_prompts", PROMPT_WRITER_SYSTEM, user, 0.5)
+        data = router.chat_json("image_prompts", PROMPT_WRITER_SYSTEM, user, 0.65)
         text = (data.get("prompt") or "").strip()
         if isinstance(data.get("prompt"), list):
             text = " ".join(str(p) for p in data["prompt"]).strip()
-        # too-short output means the model dropped the job/constraints
-        out["prompt"] = (f"{text} {prompt_builders.FIDELITY_BLOCK}"
-                         if len(text) > 100 else
-                         f"{base} {prompt_builders.FIDELITY_BLOCK}")
+        if len(text) > 100:   # too-short = the model dropped the job/constraints
+            out["prompt"] = f"{text} {suffix}"
+            out["scene"] = str(data.get("scene_summary") or "")[:120]
+        else:
+            out["prompt"] = f"{base} {suffix}"
     except Exception:
-        out["prompt"] = f"{base} {prompt_builders.FIDELITY_BLOCK}"
+        out["prompt"] = f"{base} {suffix}"
     return out
 
 
@@ -321,15 +355,18 @@ def draft_prompts(profile: ProductProfile, skill: dict, plan_summary: str,
                   target_segment: str = "", channels: list = None,
                   objective: str = "", on_progress=None) -> list:
     """Stage 1 of image generation: compile every asset's prompt through its
-    asset-specific builder. The human approves (and can edit + set n per
-    prompt) before any paid render. on_progress(i, total, draft) streams each
-    compiled prompt to the caller as it lands."""
+    asset-specific builder, threading the variation ledger so no two assets
+    share a scene. The human approves (and can edit + set n per prompt) before
+    any paid render. on_progress(i, total, draft) streams each compiled prompt
+    to the caller as it lands."""
     context = build_context(profile, plan_summary, campaign_angle,
                             target_segment, channels, objective)
     specs = skill["image_specs"]
-    out = []
+    out, scenes = [], []
     for i, spec in enumerate(specs):
-        d = draft_one(spec, profile, context, prompt_tweak)
+        d = draft_one(spec, profile, context, prompt_tweak, scenes)
+        if d.get("scene"):
+            scenes.append(d["scene"])
         out.append(d)
         if on_progress:
             on_progress(i, len(specs), d)

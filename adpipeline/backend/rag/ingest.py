@@ -35,6 +35,9 @@ MANIFEST = {
     "therapeutic_pet_market.md":   (["market_intel", "sales", "channel_metrics"], "hills", "global"),
     "skin_health_brand_performance.md": (["market_intel", "sales", "campaign_history"], "skin_health", "global"),
     "brand_guidelines_skinhealth.md":   (["brand_guidelines"], "skin_health", "global"),
+    # exact per-product facts quoted from the LIVE product pages (July 2026) -
+    # in brand_guidelines so the copywriter/prompt-writer cite exact claims
+    "product_catalog.md":          (["brand_guidelines", "market_intel"], "all", "global"),
 }
 
 _enc = None  # lazy: tiktoken downloads its BPE file on first use

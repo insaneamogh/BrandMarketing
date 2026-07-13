@@ -26,6 +26,7 @@ _MAP = {
     "copy": MODEL_BULK,                 # Agent 3 - copy blocks (lite)
     "image_prompts": MODEL_STRATEGIST,  # Agent 3 - prompt compiler needs the
                                         # strong text model, not lite
+    "refine": MODEL_STRATEGIST,         # objective sharpener (UI sparkle button)
 }
 
 

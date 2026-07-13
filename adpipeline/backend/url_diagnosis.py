@@ -32,58 +32,87 @@ _IMG_NOISE = re.compile(
     r"(sprite|icon|favicon|logo|placeholder|pixel|badge|flag|arrow|spinner|"
     r"loading|\.svg|\.gif|1x1|blank)", re.I)
 
+# Verified against the LIVE product pages (July 2026) - names, claims and
+# ingredients below are quoted from the pages, not invented. Source URLs live
+# in rag/corpus/product_catalog.md.
 _FALLBACKS = {
     "hills": ProductProfile(
-        name="Hill's Science Diet Youthful Vitality Adult 7+",
-        category="Senior dog/cat nutrition (dry food)",
-        key_claims=["Supports energy and vitality in pets 7+",
-                    "Promotes healthy brain function and activity",
-                    "Supports lustrous coat and healthy skin"],
-        pack_description="Cream/white bag with Hill's orange-red branding and a senior pet image",
+        name="Hill's Science Diet Adult 7+ Senior Vitality Chicken & Rice Recipe",
+        category="Senior dog nutrition (dry kibble, adult 7+)",
+        key_claims=["Improves everyday ability to get up & go",
+                    "Proprietary blend supports brain health, interaction, energy and vitality",
+                    "Easy-to-digest ingredients for healthy digestion",
+                    "Promotes a healthy coat with Vitamin E and Omega-6 fatty acids"],
+        pack_description="Tall gusseted kibble bag, warm cream/white field with Hill's "
+                         "red-orange logo band across the top, 'Adult 7+ Senior Vitality' "
+                         "lettering, photo of an alert senior golden retriever and a small "
+                         "chicken-and-rice ingredient inset near the base; 12.5 lb size cue",
         brand_colors=["#FFFFFF", "#E4002B", "#F4A300"],
         price_tier="premium",
     ),
     "hills_rx": ProductProfile(
-        name="Hill's Prescription Diet k/d Kidney Care",
-        category="Veterinary therapeutic dog food (prescription, kidney support)",
-        key_claims=["Clinically tested nutrition for kidney support",
-                    "Formulated with veterinarians and nutritionists",
-                    "Supports appetite and vitality in pets with kidney conditions"],
-        pack_description="White clinical bag with Hill's red-orange band, 'Prescription Diet k/d' "
-                         "lettering and a small dog photo - pharmaceutical, vet-office look",
+        name="Hill's Prescription Diet k/d Kidney Care with Chicken",
+        category="Veterinary therapeutic dog food (prescription, kidney support, dry)",
+        key_claims=["Clinical nutrition shown to help add years and enhance quality of life",
+                    "ActivBiome+ Kidney Defense supports kidney health",
+                    "Enhanced Appetite Trigger (E.A.T.) stimulates food intake",
+                    "Reduced phosphorus and sodium with added omega-3 fatty acids"],
+        pack_description="White clinical kibble bag with Hill's red-orange top band, large "
+                         "'Prescription Diet' wordmark, teal 'k/d' letters, small dog photo "
+                         "and 'Kidney Care' descriptor - pharmaceutical, vet-office look; "
+                         "8.5 lb size cue",
         brand_colors=["#FFFFFF", "#E4002B", "#1C3B6E"],
         price_tier="prestige",
     ),
     "palmolive": ProductProfile(
-        name="Palmolive Luminous Oils",
-        category="Personal care - shower gel / body wash",
-        key_claims=["Infused with natural oils", "Indulgent fragrance",
-                    "Leaves skin feeling soft and glowing"],
-        pack_description="Amber/gold bottle with Palmolive green heritage cue and oil-drop visual",
+        name="Palmolive Luminous Oils Frangipani & Coconut Shower Gel",
+        category="Personal care - moisturizing shower gel / body wash",
+        key_claims=["Enriched with natural coconut oil and frangipani",
+                    "Feels like a summer holiday - indulgent tropical fragrance",
+                    "Cleanses and conditions for soft, smooth, glowing skin"],
+        pack_description="Curved translucent amber-gold 400ml bottle with a black flip cap, "
+                         "Palmolive green leaf logo up top, 'Luminous Oils' script, white "
+                         "frangipani flower and halved-coconut artwork on the label, "
+                         "golden oil-drop visual running down the bottle",
         brand_colors=["#0A7D3E", "#E8B04B", "#FFF6E6"],
         price_tier="mass-premium",
     ),
     "eltamd": ProductProfile(
         name="EltaMD UV Clear Broad-Spectrum SPF 46",
-        category="Dermatologist-recommended facial sunscreen (skincare)",
-        key_claims=["Broad-spectrum SPF 46 with transparent zinc oxide",
-                    "Oil-free, calms and protects sensitive and acne-prone skin",
-                    "Niacinamide supports a clear, even-looking complexion"],
-        pack_description="Minimal white cylindrical pump bottle with clean black EltaMD "
-                         "wordmark and thin teal 'UV Clear' accent band - clinical, derm-office aesthetic",
+        category="Dermatologist-recommended facial sunscreen (acne-prone skin)",
+        key_claims=["9.0% transparent zinc oxide broad-spectrum SPF 46",
+                    "5% niacinamide helps visibly improve skin tone and discoloration",
+                    "Oil-free, non-comedogenic - calms and protects acne-prone skin",
+                    "Lightweight, hypoallergenic and fragrance-free"],
+        pack_description="Slim white cylindrical 1.7 oz airless pump bottle with a flat white "
+                         "cap, clean black EltaMD wordmark, thin teal 'UV Clear' accent band "
+                         "and 'Broad-Spectrum SPF 46' in small grey type - clinical, "
+                         "derm-office aesthetic",
         brand_colors=["#FFFFFF", "#000000", "#2AA8A0"],
         price_tier="prestige",
     ),
     "filorga": ProductProfile(
-        name="Filorga NCEF-Reverse Supreme Regenerating Cream",
+        name="Filorga NCEF-Reverse Multi-Correction Cream",
         category="Premium French anti-aging skincare (face cream)",
-        key_claims=["NCEF complex inspired by aesthetic-medicine formulations",
-                    "Visibly smooths wrinkles and improves firmness",
-                    "Restores radiance and skin quality"],
-        pack_description="Luxurious glass jar with matte white body, glossy black lid and "
-                         "gold NCEF-REVERSE lettering - French-pharmacy prestige look",
+        key_claims=["Ultra-concentrated in NCEF, the polyrevitalizing complex inspired by aesthetic medicine",
+                    "Hyaluronic acid + collagen + vitamins A, H and E act on wrinkles, firmness and radiance",
+                    "Ultra-comfortable shea-enriched texture with a matte finish (1.69 fl oz jar)"],
+        pack_description="Heavy squat glass jar with matte white body, glossy black screw lid, "
+                         "'FILORGA' in black caps and 'NCEF-REVERSE' in gold lettering with a "
+                         "thin gold ring accent - French-pharmacy prestige look, 50ml/1.69 oz",
         brand_colors=["#FFFFFF", "#000000", "#C9A24B"],
         price_tier="prestige",
+    ),
+    # neutral profile for ANY pasted URL outside the 5 demo products ("Other")
+    # - prevents a wrong-brand canned profile from bleeding into the renders
+    "generic": ProductProfile(
+        name="Product from pasted URL",
+        category="Consumer product",
+        key_claims=["Details extracted from the product page"],
+        pack_description="Physical retail packaging exactly as shown on the product page - "
+                         "render only what the page and its images actually show",
+        brand_colors=["#FFFFFF", "#333333"],
+        price_tier="mass-premium",
     ),
 }
 
@@ -98,11 +127,25 @@ def _guess_family(text: str) -> str:
         return "hills_rx"
     if any(k in t for k in ("palmolive", "luminous", "soap", "shower", "body wash")):
         return "palmolive"
-    return "hills"
+    if any(k in t for k in ("hill", "science diet", "vitality", "senior", "kibble",
+                            "dog", "cat", "pet")):
+        return "hills"
+    return "generic"     # unknown product (the "Other" paste-any-URL flow)
+
+
+def _slug_name(url: str) -> str:
+    """Human-ish product name from a URL slug - last-resort naming for 'Other'."""
+    slug = re.sub(r"[?#].*$", "", url).rstrip("/").rsplit("/", 1)[-1]
+    words = re.sub(r"[-_+]+", " ", slug).strip()
+    return words.title() if 2 < len(words) < 80 else "Product from pasted URL"
 
 
 def _fallback(hint: str) -> ProductProfile:
-    return _FALLBACKS[_guess_family(hint)]
+    fam = _guess_family(hint)
+    prof = _FALLBACKS[fam]
+    if fam == "generic" and "http" in hint:
+        prof = prof.model_copy(update={"name": _slug_name(hint)})
+    return prof
 
 
 def _iter_ld_products(data):

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import {
   BarChart10, Brush01, Check, CheckCircle, ClockRewind, Compass03, Diamond01,
   Edit02, HelpCircle, LayersTwo01, Link01, Menu01, RefreshCcw01, Rocket02,
-  SearchLg, Target04, Upload01, XClose,
+  SearchLg, Stars01, Target04, Trash01, Upload01, XClose,
 } from "@untitled-ui/icons-react";
 
 // ============================================================
@@ -74,13 +74,16 @@ const SKILLS = [
   { cmd: "/meta", d: "4:5 feed + 9:16 story with hook overlays" },
   { cmd: "/bundle", d: "All sets + storyboard + Seedance video prompt" },
 ];
+// LIVE product pages, verified July 2026 (exact facts: rag/corpus/product_catalog.md)
+const OTHER = "Other (paste any product URL)";
 const DEFAULT_URL = {
   "Hill's Youthful Vitality":
-    "https://www.hillspet.com/dog-food/sd-canine-youthful-vitality-adult-7-plus-chicken-rice-recipe-dry",
+    "https://www.hillspet.com/dog-food/science-diet-adult-7-senior-vitality-chicken-rice-dry",
   "Hill's Prescription Diet k/d": "https://www.hillspet.com/dog-food/pd-kd-canine-dry",
-  "Palmolive Luminous Oils": "https://www.palmolive.com/en-us/products/body-wash",
+  "Palmolive Luminous Oils":
+    "https://www.palmolive.com.au/products-range/body-wash/coconut-oil-frangipani-enriching-shower-gel",
   "EltaMD UV Clear SPF 46": "https://eltamd.com/products/uv-clear-broad-spectrum-spf-46",
-  "Filorga NCEF-Reverse": "https://www.filorga.com/en/ncef-reverse/",
+  "Filorga NCEF-Reverse": "https://us.filorga.com/products/ncef-reverse",
 };
 
 // which brand-guidelines doc + guardrail summary applies to a product name
@@ -1291,6 +1294,61 @@ function Gate({ stage, campaign, decide, rerun, loading, approveLabel }) {
 }
 
 /* ---------- solo run form (product + objective + one run button) ---------- */
+/* Gemini-flash objective sharpener: turns "sales are down in apac" into a
+   crisp campaign objective before any agent runs. */
+function RefineBtn({ product, objective, setObjective }) {
+  const [busy, setBusy] = useState(false);
+  const go = async () => {
+    if (!String(objective || "").trim() || busy) return;
+    setBusy(true);
+    try {
+      const r = await api("/refine", {
+        method: "POST",
+        body: JSON.stringify({ product, objective }),
+      });
+      setObjective(r.objective);
+    } catch (e) {
+      alert(String(e.message || e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <button
+      onClick={go}
+      disabled={busy}
+      title="Refine this brief with Gemini flash"
+      style={{
+        border: `1px solid ${T.blueBorder}`,
+        background: busy ? T.blueSoft : "rgba(255,255,255,0.85)",
+        color: T.blue, borderRadius: 11, padding: "0 12px",
+        cursor: busy ? "wait" : "pointer", flexShrink: 0,
+        display: "inline-flex", alignItems: "center", gap: 6,
+        fontFamily: T.mono, fontSize: 11, fontWeight: 700, height: 43,
+      }}
+    >
+      <Stars01 width={14} height={14} /> {busy ? "…" : "AI"}
+    </button>
+  );
+}
+
+function ObjectiveInput({ product, objective, setObjective, label = "OBJECTIVE / BRIEF" }) {
+  return (
+    <div>
+      <Label>{label}</Label>
+      <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+        <input
+          style={{ ...inputStyle, marginTop: 0, flex: 1 }}
+          value={objective}
+          onChange={(e) => setObjective(e.target.value)}
+          placeholder='Rough notes work - e.g. "sales are down in APAC" - then hit AI'
+        />
+        <RefineBtn product={product} objective={objective} setObjective={setObjective} />
+      </div>
+    </div>
+  );
+}
+
 function SoloRunCard({ product, setProduct, objective, setObjective, loading, onRun, label, hint }) {
   const isMobile = useIsMobile();
   return (
@@ -1305,10 +1363,7 @@ function SoloRunCard({ product, setProduct, objective, setObjective, loading, on
             ))}
           </select>
         </div>
-        <div>
-          <Label>OBJECTIVE / BRIEF</Label>
-          <input style={{ ...inputStyle, marginTop: 6 }} value={objective} onChange={(e) => setObjective(e.target.value)} />
-        </div>
+        <ObjectiveInput {...{ product, objective, setObjective }} />
         <Btn onClick={onRun} disabled={!!loading}>
           {loading ? "Running…" : label}
         </Btn>
@@ -1367,10 +1422,10 @@ function Overview({ product, setProduct, objective, setObjective, campaign, star
               ))}
             </select>
           </div>
-          <div>
-            <Label>{solo ? "OBJECTIVE / BRIEF" : "OBJECTIVE"}</Label>
-            <input style={{ ...inputStyle, marginTop: 6 }} value={objective} onChange={(e) => setObjective(e.target.value)} />
-          </div>
+          <ObjectiveInput
+            {...{ product, objective, setObjective }}
+            label={solo ? "OBJECTIVE / BRIEF" : "OBJECTIVE"}
+          />
           {!solo && (
             <Btn onClick={startCampaign} disabled={!!loading}>
               {loading ? "Running…" : "Start campaign →"}
@@ -1785,15 +1840,21 @@ function CreativeStudio({ product, setProduct, objective, setObjective, campaign
                   setUrl(DEFAULT_URL[e.target.value] || "");
                 }}
               >
-                {PRODUCTS.map((pr) => (
+                {[...PRODUCTS, OTHER].map((pr) => (
                   <option key={pr}>{pr}</option>
                 ))}
               </select>
+              {product === OTHER && (
+                <p style={{ fontSize: 11.5, color: T.blue, fontWeight: 600, margin: "6px 0 0" }}>
+                  Paste ANY product URL below - the scraper extracts the product and
+                  designs from what the page actually says.
+                </p>
+              )}
             </div>
-            <div>
-              <Label>OBJECTIVE / BRIEF (USED AS THE CREATIVE BRIEF)</Label>
-              <input style={{ ...inputStyle, marginTop: 6 }} value={objective} onChange={(e) => setObjective(e.target.value)} />
-            </div>
+            <ObjectiveInput
+              {...{ product, objective, setObjective }}
+              label="OBJECTIVE / BRIEF (USED AS THE CREATIVE BRIEF)"
+            />
           </div>
         )}
         <div style={{ display: "flex", gap: 12, alignItems: "center", marginTop: 14, flexWrap: "wrap" }}>
@@ -1801,7 +1862,9 @@ function CreativeStudio({ product, setProduct, objective, setObjective, campaign
           <input
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            placeholder="Product URL (or manual:<pasted text>)"
+            placeholder={product === OTHER
+              ? "Paste ANY product URL - it will be scraped and designed from"
+              : "Product URL (or manual:<pasted text>)"}
             style={{ flex: "1 1 300px", fontFamily: T.mono, fontSize: 12.5, color: T.soft, background: "rgba(255,255,255,0.8)", border: `1px solid ${T.line}`, borderRadius: 11, padding: "11px 15px" }}
           />
           <Btn onClick={() => genCreative(url, skill, ref?.reference_id, tweak)} disabled={!!loading}>
@@ -2391,6 +2454,20 @@ function Library({ onCost }) {
     }
   };
 
+  const del = async (id) => {
+    if (!window.confirm(`Delete asset #${id}? This removes it from the library permanently.`)) return;
+    setBusy(id);
+    try {
+      await api(`/assets/${id}`, { method: "DELETE" });
+      await load();
+      onCost?.();
+    } catch (e) {
+      alert(String(e.message || e));
+    } finally {
+      setBusy(0);
+    }
+  };
+
   const statCards = [
     { l: "Assets stored", v: String(stats.assets_stored) },
     { l: "Image spend", v: `$${stats.image_spend_usd.toFixed(2)}` },
@@ -2478,6 +2555,18 @@ function Library({ onCost }) {
                   </button>
                   <button onClick={() => act(a.id, "variant")} disabled={busy === a.id} style={miniBtn(true)}>
                     {busy === a.id ? "…" : "Variant"}
+                  </button>
+                  <button
+                    onClick={() => del(a.id)}
+                    disabled={busy === a.id}
+                    title="Delete this asset"
+                    style={{
+                      ...miniBtn(false), flex: "0 0 auto", padding: "8px 10px",
+                      color: T.red, border: `1px solid rgba(217,54,54,0.4)`,
+                      display: "inline-flex", alignItems: "center", justifyContent: "center",
+                    }}
+                  >
+                    <Trash01 width={14} height={14} />
                   </button>
                 </div>
               </div>

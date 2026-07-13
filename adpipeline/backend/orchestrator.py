@@ -325,6 +325,11 @@ async def _generate_creative_events(db, c: Campaign, url: str, skill: str,
         yield {"type": "status", "step": "profile",
                "message": "Diagnosing the product URL"}
         profile = await asyncio.to_thread(url_diagnosis.diagnose, url)
+        # "Other" / placeholder campaigns take the scraped product's real name
+        if c.product in ("Other (paste any product URL)", "Standalone creative",
+                         "Other") and profile.name:
+            c.product = profile.name
+            db.commit()
         yield {"type": "profile", "data": profile.model_dump()}
 
         yield {"type": "status", "step": "copy",
@@ -341,7 +346,7 @@ async def _generate_creative_events(db, c: Campaign, url: str, skill: str,
             campaign_angle, target_segment, channels, c.objective or "")
 
         specs = skill_def["image_specs"]
-        prompts = []
+        prompts, scenes = [], []
         for i, spec in enumerate(specs):
             label = ("compliance-locked template" if spec.get("locked")
                      else f"{spec.get('builder', 'product_shoot')} builder")
@@ -349,7 +354,9 @@ async def _generate_creative_events(db, c: Campaign, url: str, skill: str,
                    "message": f"Compiling {spec['kind']} prompt ({i + 1}/{len(specs)}, {label})"}
             d = await asyncio.to_thread(
                 creative_agent.draft_one, spec, profile, context,
-                prompt_tweak or "")
+                prompt_tweak or "", scenes)
+            if d.get("scene"):
+                scenes.append(d["scene"])
             prompts.append(d)
             yield {"type": "prompt", "index": i, "total": len(specs), "data": d}
 
@@ -751,6 +758,55 @@ def library_stats() -> dict:
         }
     finally:
         db.close()
+
+
+def delete_asset(asset_id: int) -> dict:
+    """Delete an asset row. The image file is unlinked only when no other row
+    still references it (reuse rows and cache hits share files) and it lives
+    under ASSETS_DIR (never the committed /cache placeholders)."""
+    db = SessionLocal()
+    try:
+        a = db.get(Asset, asset_id)
+        if not a:
+            raise ValueError("asset not found")
+        path = a.path
+        db.delete(a)
+        db.commit()
+        file_deleted = False
+        others = db.query(Asset).filter(Asset.path == path).count()
+        if others == 0 and path:
+            p = Path(path)
+            try:
+                if p.exists() and ASSETS_DIR in p.resolve().parents:
+                    p.unlink()
+                    file_deleted = True
+            except Exception:
+                pass          # DB row is gone either way; file cleanup is best-effort
+        return {"deleted": asset_id, "file_deleted": file_deleted}
+    finally:
+        db.close()
+
+
+def refine_objective(product: str, objective: str) -> dict:
+    """Turn a raw note ('sales are down in APAC') into a crisp, campaign-ready
+    objective before the pipeline runs. Gemini flash, free tier."""
+    from llm import router
+    system = (
+        "You are a CPG marketing chief of staff. The user typed a rough note as "
+        "their campaign objective. Rewrite it into ONE crisp, actionable "
+        "campaign objective of at most 160 characters that keeps their exact "
+        "intent and adds the missing specificity a marketing team needs: the "
+        "goal verb (grow/recover/defend/launch), the market or region if "
+        "implied, the audience if implied, and what success looks like. Never "
+        "invent numbers or facts the note does not imply. Plain business "
+        'English, no buzzwords. Return JSON only: {"objective": str}.'
+    )
+    user = f"PRODUCT: {product}\nRAW NOTE: {objective}\nRewrite it now."
+    data = router.chat_json("refine", system, user, 0.4)
+    refined = str(data.get("objective") or "").strip()
+    if not refined or len(refined) > 220:
+        raise ValueError("could not refine the objective - keep your original")
+    return {"objective": refined, "original": objective}
 
 
 def reuse_asset(asset_id: int) -> dict:

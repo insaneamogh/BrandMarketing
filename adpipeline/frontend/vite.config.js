@@ -23,6 +23,7 @@ export default defineConfig({
       "/prompts": "http://localhost:8000",
       "/video": "http://localhost:8000",      // also matches /videos/*
       "/reference": "http://localhost:8000",  // also matches /references/*
+      "/refine": "http://localhost:8000",
     },
   },
 });

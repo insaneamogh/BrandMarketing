@@ -95,23 +95,31 @@ COMPOSITION: Clear foreground / product plane / background depth. Product occupi
 CAMERA: Professional high-end commercial photography; lens and perspective chosen for the product's geometry; physically realistic perspective; packaging tack-sharp; background may soften.
 LIGHTING BY MATERIAL: glass = controlled edge reflections; glossy plastic = soft large-source reflections; matte = sculpted directional light; metallic = controlled speculars; food = appetizing dimensional light; skincare = soft luminous beauty light.
 TEXTURE: Physically believable materials - liquid behaves like liquid, foam has microstructure, food has natural moisture, fur has individual strands, glass refracts correctly.
+VARIATION MENU (pick ONE environment not yet used in this campaign): sunlit marble kitchen counter · rain-flecked window ledge at dawn · warm-wood studio tabletop with linen · slate bathroom shelf with steam · outdoor terrace at golden hour · minimalist seamless color-field studio keyed to the brand palette.
 OUTPUT: One premium campaign photograph. No headline, no CTA, no graphic overlays, no clutter. It should feel photographed for THIS product, not generated from a generic ad template.""",
 
     # ---- 2. Amazon secondary lifestyle --------------------------------------
     "amazon_lifestyle": """ASSET JOB: Amazon secondary image - reduce purchase uncertainty by showing the product genuinely doing its job for the exact person/pet it is for.
-CREATIVE DIRECTION: One believable in-use moment answering "will this work for me?". Real setting, real emotion, bright trustworthy daylight. The pack stays clearly identifiable and label-readable - shoppers zoom. No fantasy scenarios; the moment must be repeatable in the customer's own home. Composition survives a mobile thumbnail: single subject, high contrast, product unmistakable.""",
+CREATIVE DIRECTION: One believable in-use moment answering "will this work for me?". Real setting, real emotion, bright trustworthy daylight (10am window light or soft overcast - never moody). Cast the EXACT audience from the context (a senior dog for 7+ nutrition, acne-prone twenty-something for SPF...). The pack stays clearly identifiable and label-readable in the frame - shoppers zoom; place it in the sharpest plane of focus. No fantasy scenarios; the moment must be repeatable in the customer's own home tomorrow morning.
+CRAFT: candid documentary framing (35mm feel), skin/fur with real texture, hands interacting with the product naturally, environment props that confirm the use case (leash by the door, bathroom counter clutter kept minimal).
+VARIATION MENU (pick ONE moment not yet used): first-use unboxing on the kitchen counter · the daily-routine moment (morning feed / morning application) · the payoff moment (energetic walk / confident bare skin) · a caring close-up of hands + product + recipient.
+Composition survives a mobile thumbnail: single subject, high contrast, product unmistakable.""",
 
     # ---- 3. Amazon infographic: clarity beats cinematic beauty -------------
     "amazon_infographic": """ASSET JOB: Conversion-focused ecommerce infographic - answer ONE important customer question within two seconds (what does it do / who is it for / what's inside / how is it used / why this variant).
 INFORMATION HIERARCHY: 1) space for a short benefit-led headline, 2) product, 3) visual proof or mechanism, 4) at most 2-4 supporting zones. Never overload.
 VISUAL EXPLANATION: Translate the benefit into a visually understandable mechanism: ingredient->function, problem->solution, step 1->2->3, product->benefit zones, what's included, or routine sequence.
-LAYOUT: Clean ecommerce composition, strong mobile readability, product prominent, high contrast, simple scan path headline-zone -> product -> proof. Icon ZONES only where they aid comprehension.
+LAYOUT: Clean ecommerce composition on a light neutral or soft brand-tint field, strong mobile readability, product prominent (30-40% of frame, sharpest element), high contrast, simple Z-scan path: headline-zone (top) -> product (center-left or center) -> proof zones (right or below). Icon ZONES only where they aid comprehension - rounded containers, consistent stroke weight, generous padding.
+THE 2-SECOND TEST: a shopper scrolling the gallery on a phone must grasp the one message before their thumb moves. If the concept needs explanation, simplify it.
+VARIATION MENU (pick ONE mechanism not yet used): ingredient callout lines from pack to floating raw-ingredient vignettes · 3-step usage sequence left-to-right · problem panel vs solution panel split · benefit-zone map around the product · what's-in-the-box arrangement.
 HARD RULES: NO baked-in words, letters, numbers or fake statistics - text is overlaid programmatically later. No decorative pseudo-science, no fabricated clinical diagrams, no invented percentages or certifications. Communicate ONE message exceptionally clearly rather than several poorly.""",
 
     # ---- 4. Meta 4:5: stop the scroll with ONE conversion idea -------------
     "meta_45": """ASSET JOB: 4:5 Meta feed performance creative - the viewer must grasp the central idea before reading any copy. Build the ENTIRE visual around ONE conversion concept.
 CHOOSE THE FRAMEWORK that best fits the angle (never default to a centered product floating on a colored background): problem->solution, before->after, ingredient->benefit, routine/system, comparison, objection handling, demonstration, checklist, myth vs reality, three reasons, product anatomy, use-case moment, or emotional transformation.
 LAYOUT ZONES: top 20-25% kept clean for a scroll-stopping hook overlay; middle 50-60% carries the visual explanation of the idea; bottom carries product + proof. The product must be identifiable on a phone at arm's length.
+SCROLL-STOP CRAFT: the feed background is white - win with saturated color blocking, an unexpected scale relationship, a frozen mid-action moment, or a face/pet making eye contact with the camera. One dominant diagonal or leading line pulls the eye from hook zone to product. Native-feel lighting (slightly imperfect, real) outperforms studio gloss in feed.
+VARIATION MENU (pick ONE device not yet used): split-frame before/after · macro ingredient explosion around the pack · real-moment candid with eye contact · bold color-field with product at golden-ratio point · annotated product anatomy with empty callout zones.
 PRIORITIZE: clarity, contrast, curiosity, specificity, product recognition. It should feel like a high-performing native social ad, not a magazine cover. NO baked-in text - overlay zones only.""",
 
     # ---- 5. Meta 9:16: vertical momentum, not a stretched 4:5 --------------

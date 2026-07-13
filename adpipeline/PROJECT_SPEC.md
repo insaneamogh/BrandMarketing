@@ -143,6 +143,8 @@ GET  /cost                      cost readout by model
 GET  /library?brand=&skill=&cache_only=
 GET  /library/stats             assets_stored, image_spend_usd, cache_hits, dollars_saved_usd
 POST /assets/{id}/reuse         duplicate onto the shelf ($0)
+DELETE /assets/{id}             delete an asset (file removed when unreferenced)
+POST /refine                    {product, objective} -> Gemini-sharpened objective (UI sparkle)
 POST /assets/{id}/variant       {prompt?} re-render, optionally with a user-edited prompt
 GET  /health
 ```

@@ -306,6 +306,27 @@ async def variant(asset_id: int, inp: VariantInput | None = None):
         raise HTTPException(404, str(e))
 
 
+@app.delete("/assets/{asset_id}")
+def delete_asset(asset_id: int):
+    """Delete an asset (file removed only when no other row references it)."""
+    try:
+        return orchestrator.delete_asset(asset_id)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+
+
+@app.post("/refine")
+def refine(inp: CampaignInput):
+    """Sharpen a rough objective note into a campaign-ready objective (Gemini flash)."""
+    try:
+        return orchestrator.refine_objective(inp.product, inp.objective)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception:
+        raise HTTPException(
+            400, "refine unavailable (text model unreachable) - keeping your original")
+
+
 # ---------------- Serve built React bundle (single-service deploy) ----------
 # Mounted LAST so it never shadows the API routes above. Enabled only when a
 # production build exists (frontend/dist), e.g. on Railway.
