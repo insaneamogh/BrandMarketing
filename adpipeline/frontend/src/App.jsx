@@ -133,6 +133,45 @@ async function uploadFile(path, file) {
   return r.json();
 }
 
+/* POST + consume an SSE stream: onEvent fires per event, resolves with the
+   done payload. Keeps the user watching progress instead of a frozen spinner. */
+async function apiStream(path, body, onEvent, signal) {
+  const r = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal,
+  });
+  if (!r.ok || !r.body) throw new Error((await r.text()) || r.statusText);
+  const reader = r.body.getReader();
+  const dec = new TextDecoder();
+  let buf = "";
+  let done = null;
+  for (;;) {
+    const { value, done: eof } = await reader.read();
+    if (eof) break;
+    buf += dec.decode(value, { stream: true });
+    let idx;
+    while ((idx = buf.indexOf("\n\n")) >= 0) {
+      const chunk = buf.slice(0, idx);
+      buf = buf.slice(idx + 2);
+      const line = chunk.split("\n").find((l) => l.startsWith("data: "));
+      if (!line) continue;
+      let ev;
+      try {
+        ev = JSON.parse(line.slice(6));
+      } catch {
+        continue;
+      }
+      if (ev.type === "error") throw new Error(ev.message || "stream error");
+      if (ev.type === "done") done = ev.data;
+      onEvent?.(ev);
+    }
+  }
+  if (!done) throw new Error("stream ended unexpectedly");
+  return done;
+}
+
 export default function App() {
   const [view, setView] = useState("overview");
   // "chain" = gated handoffs 1→2→3 · "solo" = run any agent standalone
@@ -198,6 +237,24 @@ export default function App() {
   };
   const isBusy = (scope) => (busy[scope] ? busy[scope].msg : "");
 
+  /* live-update a running task's banner message from SSE status events */
+  const updateBusy = (scope, msg) =>
+    setBusy((b) => (b[scope] ? { ...b, [scope]: { ...b[scope], msg } } : b));
+
+  /* progressive draft: profile -> copy -> prompts land one by one in the UI */
+  const onDraftEvent = (scope, skill) => (ev) => {
+    if (ev.type === "status") updateBusy(scope, `Agent 3: ${ev.message}…`);
+    else if (ev.type === "profile")
+      setCreative({
+        profile: ev.data, copy_blocks: {}, prompts: [], assets: [],
+        rendered: false, drafting: true, skill_used: skill,
+      });
+    else if (ev.type === "copy")
+      setCreative((c) => (c ? { ...c, copy_blocks: ev.data } : c));
+    else if (ev.type === "prompt")
+      setCreative((c) => (c ? { ...c, prompts: [...(c.prompts || []), ev.data] } : c));
+  };
+
   const switchMode = (m) => {
     if (m === mode) return;
     setMode(m);
@@ -247,20 +304,16 @@ export default function App() {
     });
 
   const soloCreative = (url, skill, referenceId, promptTweak) =>
-    runTask("creative", "Agent 3 (solo): scraping URL + drafting prompts and copy (no image spend)…", async (signal) => {
-      const res = await api("/solo/creative", {
-        method: "POST",
-        body: JSON.stringify({
-          url,
-          skill,
-          product,
-          objective,
-          campaign_id: soloReuseId(),
-          reference_id: referenceId || null,
-          prompt_tweak: promptTweak || null,
-        }),
-        signal,
-      });
+    runTask("creative", "Agent 3 (solo): starting the draft stage…", async (signal) => {
+      const res = await apiStream("/solo/creative/stream", {
+        url,
+        skill,
+        product,
+        objective,
+        campaign_id: soloReuseId(),
+        reference_id: referenceId || null,
+        prompt_tweak: promptTweak || null,
+      }, onDraftEvent("creative", skill), signal);
       if (!campaign || campaign.id !== res.campaign_id) {
         setCampaign({
           id: res.campaign_id, product, objective, status: "solo_creative",
@@ -319,18 +372,14 @@ export default function App() {
   };
 
   const genCreative = (url, skill, referenceId, promptTweak) =>
-    runTask("creative", "Agent 3: scraping URL + drafting prompts and copy (no image spend)…", async (signal) => {
-      const res = await api("/creative", {
-        method: "POST",
-        body: JSON.stringify({
-          campaign_id: campaign.id,
-          url,
-          skill,
-          reference_id: referenceId || null,
-          prompt_tweak: promptTweak || null,
-        }),
-        signal,
-      });
+    runTask("creative", "Agent 3: starting the draft stage…", async (signal) => {
+      const res = await apiStream("/creative/stream", {
+        campaign_id: campaign.id,
+        url,
+        skill,
+        reference_id: referenceId || null,
+        prompt_tweak: promptTweak || null,
+      }, onDraftEvent("creative", skill), signal);
       setCreative({ ...res, skill_used: skill });
       setPlacement(null);
       setPublished(null);
@@ -338,18 +387,23 @@ export default function App() {
     });
 
   /* the ONLY call that spends image budget - fires after the human approves
-     (and optionally edits) the drafted prompts */
+     (and optionally edits) the drafted prompts. Streams: each finished image
+     appears in the grid the moment it lands. */
   const renderImages = (prompts) =>
-    runTask("render", "Rendering approved prompts with the image model…", async (signal) => {
-      const res = await api("/creative/render", {
-        method: "POST",
-        body: JSON.stringify({
-          creative_id: creative.creative_id,
-          prompts: prompts.map((p) => ({ kind: p.kind, prompt: p.prompt })),
-        }),
-        signal,
-      });
-      setCreative((c) => ({ ...res, skill_used: c?.skill_used }));
+    runTask("render", "Sending approved prompts to the image model…", async (signal) => {
+      const skillUsed = creative?.skill_used;
+      setCreative((c) => (c ? { ...c, assets: [], rendered: false } : c));
+      const res = await apiStream("/creative/render/stream", {
+        creative_id: creative.creative_id,
+        prompts: prompts.map((p) => ({ kind: p.kind, prompt: p.prompt, n: p.n || 1 })),
+      }, (ev) => {
+        if (ev.type === "status") updateBusy("render", `Agent 3: ${ev.message}…`);
+        else if (ev.type === "asset")
+          setCreative((c) => (c ? {
+            ...c, rendered: true, assets: [...(c.assets || []), ev.data],
+          } : c));
+      }, signal);
+      setCreative({ ...res, skill_used: skillUsed });
       refreshCost();
     });
 
@@ -2006,15 +2060,25 @@ function CreativeStudio({ product, setProduct, objective, setObjective, campaign
 
 /* the pre-spend human gate: drafted image prompts, editable, approve to render */
 function PromptApproval({ creative, onRender, rendering }) {
-  const [drafts, setDrafts] = useState(creative.prompts || []);
+  const [drafts, setDrafts] = useState(
+    (creative.prompts || []).map((d) => ({ n: 1, ...d })));
+  const drafting = !!creative.drafting && !creative.creative_id;
+  // resync when a new creative lands AND as prompts stream in during drafting
   useEffect(() => {
-    setDrafts(creative.prompts || []);
-  }, [creative.creative_id]);
-  const total = drafts.reduce((a, d) => a + (d.est_cost_usd || 0), 0);
+    setDrafts((prev) => (creative.prompts || []).map((d, i) => ({
+      n: 1, ...d, ...(prev[i] && prev[i].kind === d.kind
+        ? { prompt: prev[i].prompt === d.prompt ? d.prompt : prev[i].prompt, n: prev[i].n }
+        : {}),
+    })));
+  }, [creative.creative_id, (creative.prompts || []).length]);
+  const totalImages = drafts.reduce((a, d) => a + (d.n || 1), 0);
+  const total = drafts.reduce((a, d) => a + (d.est_cost_usd || 0) * (d.n || 1), 0);
   const setPrompt = (i, v) =>
     setDrafts((ds) => ds.map((d, j) => (j === i ? { ...d, prompt: v } : d)));
+  const setN = (i, n) =>
+    setDrafts((ds) => ds.map((d, j) => (j === i ? { ...d, n } : d)));
 
-  if (!drafts.length)
+  if (!drafts.length && !drafting)
     return (
       <Card style={{ marginTop: 14 }}>
         <Label>IMAGE PROMPTS</Label>
@@ -2029,20 +2093,44 @@ function PromptApproval({ creative, onRender, rendering }) {
       <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
         <Label>HUMAN GATE · IMAGE PROMPTS AWAITING YOUR APPROVAL</Label>
         <Pill color={T.green} bg={T.greenSoft}>$0.00 SPENT SO FAR</Pill>
+        {drafting && (
+          <Pill color={T.amber} bg={T.amberSoft}>DRAFTING · PROMPTS ARRIVING LIVE</Pill>
+        )}
       </div>
       <p style={{ fontSize: 13, color: T.soft, lineHeight: 1.6, margin: "10px 0 0", fontWeight: 500 }}>
-        Long-form prompts drafted by Gemini (free tier) from the brief and brand
-        guidelines. Edit any of them, then approve: only that click calls the paid
-        image model. Identical prompts are served from cache at $0.00.
+        Each prompt is compiled by its asset-specific builder (product shoot,
+        infographic, 4:5 scroll-stopper…) from the brief and brand guidelines.
+        Edit any of them, pick how many variations (1-4) to request per prompt,
+        then approve: only that click calls the paid image model. Identical
+        single-image prompts are served from cache at $0.00.
       </p>
       {drafts.map((d, i) => (
         <div key={i} style={{ marginTop: 14 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <Label color={T.blue}>
               {i + 1}. {String(d.kind || "").replace(/_/g, " ").toUpperCase()} · {d.aspect}
             </Label>
-            <span style={{ fontFamily: T.mono, fontSize: 11, color: T.faint }}>
-              est ${Number(d.est_cost_usd || 0).toFixed(3)}
+            <span style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              <span style={{ fontFamily: T.mono, fontSize: 10.5, color: T.faint }}>IMAGES</span>
+              <span style={{ display: "inline-flex", borderRadius: 8, overflow: "hidden", border: `1px solid ${T.line}` }}>
+                {[1, 2, 3, 4].map((n) => (
+                  <button
+                    key={n}
+                    onClick={() => setN(i, n)}
+                    style={{
+                      border: "none", cursor: "pointer", padding: "4px 10px",
+                      fontFamily: T.mono, fontSize: 11.5, fontWeight: 700,
+                      background: (d.n || 1) === n ? T.blue : "rgba(255,255,255,0.75)",
+                      color: (d.n || 1) === n ? "#fff" : T.soft,
+                    }}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </span>
+              <span style={{ fontFamily: T.mono, fontSize: 11, color: T.faint }}>
+                est ${(Number(d.est_cost_usd || 0) * (d.n || 1)).toFixed(3)}
+              </span>
             </span>
           </div>
           <textarea
@@ -2052,12 +2140,18 @@ function PromptApproval({ creative, onRender, rendering }) {
           />
         </div>
       ))}
+      {drafting && (
+        <div style={{ marginTop: 14, fontFamily: T.mono, fontSize: 12, color: T.blue, fontWeight: 600 }}>
+          Compiling the next prompt…
+        </div>
+      )}
       <div style={{ display: "flex", gap: 14, alignItems: "center", marginTop: 18, flexWrap: "wrap" }}>
-        <Btn kind="approve" onClick={() => onRender(drafts)} disabled={!!rendering}>
-          {rendering ? "Rendering…" : `Approve prompts & render ${drafts.length} images (~$${total.toFixed(2)})`}
+        <Btn kind="approve" onClick={() => onRender(drafts)} disabled={!!rendering || drafting}>
+          {rendering ? "Rendering…" : `Approve prompts & render ${totalImages} image${totalImages === 1 ? "" : "s"} (~$${total.toFixed(2)})`}
         </Btn>
         <span style={{ fontSize: 12, color: T.faint, fontWeight: 500 }}>
-          This is the only step that spends image budget.
+          This is the only step that spends image budget. n is passed straight to
+          the image API as the requested variation count.
         </span>
       </div>
     </Card>

@@ -24,6 +24,7 @@ from config import (
 from llm import router
 from rag import store
 from schemas import PlacementResponse, ProductProfile
+from skills import prompt_builders
 
 GEN_DIR = ASSETS_DIR                 # persisted under the Railway Volume (DATA_DIR)
 GEN_DIR.mkdir(parents=True, exist_ok=True)
@@ -212,87 +213,189 @@ def render_one(prompt: str, aspect: str, kind: str, calls: int,
 
 
 PROMPT_WRITER_SYSTEM = (
-    "You are AGENT 3 - CREATIVE (image prompt writer) in a 3-agent CPG marketing "
-    "pipeline. You write the image-generation prompts a HUMAN will review and "
-    "approve BEFORE any image model is called and any budget is spent - your "
-    "output is the last checkpoint before money moves.\n"
-    "For each requested asset, expand its base template into ONE long-form, "
-    "production-ready prompt of 90-160 words: concrete scene, subject and "
-    "action; the exact pack rendered faithfully from the profile's "
-    "pack_description (never contradict it); named lighting; lens/camera feel; "
-    "composition that suits the stated aspect ratio; mood and color grade "
-    "anchored to the brand palette.\n"
-    "HARD RULES: preserve every non-negotiable constraint from the base "
-    "template (pure white background, no on-image text, Amazon main-image "
-    "compliance, reserved overlay space...) - restate them explicitly in your "
-    "expanded prompt. No banned claims, no competitor references, no logos or "
-    "text beyond the pack label.\n"
-    'Return a single JSON object only: {"prompts": [{"kind": str, "prompt": '
-    'str}]} with EXACTLY one entry per requested asset, in the SAME ORDER as '
-    "given. No markdown, no prose outside the JSON."
+    "You are AGENT 3 - CREATIVE (senior art director + prompt engineer) in a "
+    "3-agent CPG marketing pipeline. You compile the final image-generation "
+    "prompt for ONE advertising asset. A HUMAN reviews and approves your prompt "
+    "BEFORE any image model is called - it is the last checkpoint before money "
+    "moves, so it must be production-ready, not a sketch.\n\n"
+    "You receive: the PRODUCT CREATIVE CONTEXT (product knowledge + approved "
+    "campaign brief + brand guidelines), the ASSET JOB (this asset type's "
+    "specific communication job and creative direction), and a BASE TEMPLATE "
+    "whose constraints are non-negotiable.\n\n"
+    "COMPILE RULES:\n"
+    "- Write ONE prompt of 120-200 words in concrete visual language: subject "
+    "and action first, then scene/environment, composition for the stated "
+    "aspect ratio, camera and lens feel, NAMED lighting design, material/"
+    "texture behavior, and a color grade anchored to the brand palette.\n"
+    "- Execute the ASSET JOB exactly - a product shoot sells desirability, an "
+    "infographic answers ONE question, a 4:5 stops the scroll with ONE idea, a "
+    "9:16 has vertical momentum, a bundle sells the system. Choose the "
+    "framework the ASSET JOB offers that best fits the campaign angle, and "
+    "commit to it.\n"
+    "- The packaging description in the context is ground truth - describe the "
+    "pack faithfully; never contradict or embellish it.\n"
+    "- Every HARD CONSTRAINT in the base template survives verbatim in your "
+    "prompt (pure white background, no baked-in text, reserved overlay zones, "
+    "compliance rules). Restate them explicitly.\n"
+    "- Use ONLY approved claims from the context; no invented text, statistics, "
+    "badges, awards or certifications; no competitor references; no words or "
+    "letters anywhere in the image except the pack's own label.\n"
+    "- Never write generic filler ('stunning', 'high quality', '8k') - every "
+    "sentence must change what the camera sees.\n"
+    'Return a single JSON object only: {"prompt": str}. No markdown, no prose '
+    "outside the JSON."
 )
 
 
-def draft_prompts(profile: ProductProfile, skill: dict, plan_summary: str,
-                  campaign_angle: str, prompt_tweak: str = "") -> list:
-    """Stage 1 of image generation: Gemini (free tier) expands each skill
-    template into a long-form prompt the human approves before any paid render.
-
-    Returns [{kind, aspect, prompt, est_cost_usd}]. Falls back to the
-    deterministic templates on any model failure so the flow never dies.
-    """
+def _fill_template(spec: dict, profile: ProductProfile) -> str:
     fields = profile.model_dump()
     fields["brand_colors"] = ", ".join(profile.brand_colors)
     fields["key_claims"] = "; ".join(profile.key_claims)
+    return spec["prompt_template"].format(**fields)
 
-    base = []
-    for spec in skill["image_specs"]:
-        p = spec["prompt_template"].format(**fields)
-        if prompt_tweak:
-            p = f"{p} Art direction from the marketing team: {prompt_tweak.strip()}"
-        base.append({
-            "kind": spec["kind"], "aspect": spec["aspect"], "prompt": p,
-            "est_cost_usd": tier_cost(quality_for(spec["kind"]), spec["aspect"]),
-        })
 
+def build_context(profile: ProductProfile, plan_summary: str = "",
+                  campaign_angle: str = "", target_segment: str = "",
+                  channels: list = None, objective: str = "") -> str:
+    """The mandatory PRODUCT CREATIVE CONTEXT - built once per creative run
+    and fed to every asset-specific prompt compile."""
+    fam = _brand_key(profile)
+    try:
+        chunks = store.retrieve("brand_guidelines",
+                                f"{profile.name} tone banned claims visual {fam}", k=3)
+    except Exception:
+        chunks = []
+    return prompt_builders.build_creative_context(
+        profile, plan_summary=plan_summary, campaign_angle=campaign_angle,
+        target_segment=target_segment, channels=channels,
+        guidelines_ctx=format_context(chunks), objective=objective)
+
+
+def draft_one(spec: dict, profile: ProductProfile, context: str,
+              prompt_tweak: str = "") -> dict:
+    """Compile ONE asset's final image prompt.
+
+    locked specs (amazon_main) render their compliance template verbatim -
+    never LLM-rewritten. Everything else goes through the asset-specific
+    builder + the prompt-writer model; deterministic template on any failure.
+    The PRODUCT FIDELITY BLOCK is appended in code, never left to the model.
+    Returns {kind, aspect, prompt, est_cost_usd, n}.
+    """
+    base = _fill_template(spec, profile)
+    if prompt_tweak:
+        base = f"{base} Art direction from the marketing team: {prompt_tweak.strip()}"
+    out = {
+        "kind": spec["kind"], "aspect": spec["aspect"], "n": 1,
+        "est_cost_usd": tier_cost(quality_for(spec["kind"]), spec["aspect"]),
+    }
+
+    if spec.get("locked"):
+        out["prompt"] = f"{base} {prompt_builders.FIDELITY_BLOCK}"
+        return out
+
+    builder = prompt_builders.get_builder(spec.get("builder", "product_shoot"))
     try:
         user = (
-            f"PRODUCT PROFILE: {profile.model_dump_json()}\n"
-            f"CREATIVE BRIEF: {campaign_angle or plan_summary or 'none provided'}\n"
-            f"SKILL: {skill['command']} - {skill['description']}\n"
-            f"PLATFORM RULES: {skill['platform_rules']}\n"
-            "BASE TEMPLATES (expand each into one long-form prompt; keep every "
-            "hard rule; same order):\n"
-            + json.dumps([{"kind": b["kind"], "aspect": b["aspect"],
-                           "template": b["prompt"]} for b in base])
+            f"{context}\n\n"
+            f"ASSET JOB AND CREATIVE DIRECTION:\n{builder}\n\n"
+            f"BASE TEMPLATE (its hard constraints are non-negotiable):\n{base}\n\n"
+            f"ASPECT RATIO: {spec['aspect']}\n"
+            f"ART DIRECTION FROM THE MARKETING TEAM: {prompt_tweak.strip() or 'none'}\n\n"
+            "Compile the single production-ready image prompt now."
         )
         data = router.chat_json("image_prompts", PROMPT_WRITER_SYSTEM, user, 0.5)
-        drafts = data.get("prompts", [])
-        if len(drafts) == len(base):
-            out = []
-            for b, d in zip(base, drafts):
-                text = (d.get("prompt") or "").strip()
-                # too-short output means the model dropped the constraints
-                out.append({**b, "prompt": text if len(text) > 80 else b["prompt"]})
-            return out
+        text = (data.get("prompt") or "").strip()
+        if isinstance(data.get("prompt"), list):
+            text = " ".join(str(p) for p in data["prompt"]).strip()
+        # too-short output means the model dropped the job/constraints
+        out["prompt"] = (f"{text} {prompt_builders.FIDELITY_BLOCK}"
+                         if len(text) > 100 else
+                         f"{base} {prompt_builders.FIDELITY_BLOCK}")
     except Exception:
-        pass
-    return base
+        out["prompt"] = f"{base} {prompt_builders.FIDELITY_BLOCK}"
+    return out
+
+
+def draft_prompts(profile: ProductProfile, skill: dict, plan_summary: str,
+                  campaign_angle: str, prompt_tweak: str = "",
+                  target_segment: str = "", channels: list = None,
+                  objective: str = "", on_progress=None) -> list:
+    """Stage 1 of image generation: compile every asset's prompt through its
+    asset-specific builder. The human approves (and can edit + set n per
+    prompt) before any paid render. on_progress(i, total, draft) streams each
+    compiled prompt to the caller as it lands."""
+    context = build_context(profile, plan_summary, campaign_angle,
+                            target_segment, channels, objective)
+    specs = skill["image_specs"]
+    out = []
+    for i, spec in enumerate(specs):
+        d = draft_one(spec, profile, context, prompt_tweak)
+        out.append(d)
+        if on_progress:
+            on_progress(i, len(specs), d)
+    return out
+
+
+def render_spec(spec: dict, calls: int, cache_lookup=None,
+                reference_png: bytes = None, ref_hash: str = "") -> list:
+    """Render ONE approved prompt spec, honoring n (1-4 variations, passed to
+    the image API as a single n=k request). Returns a LIST of asset records.
+
+    n == 1 goes through the prompt-hash cache (render_one). n > 1 always
+    generates - the user explicitly asked for k distinct variations - and each
+    variation counts toward MAX_IMAGE_CALLS_PER_RUN.
+    """
+    n = max(1, min(4, int(spec.get("n") or 1)))
+    prompt, aspect, kind = spec["prompt"], spec["aspect"], spec["kind"]
+    if n == 1:
+        return [render_one(prompt, aspect, kind, calls,
+                           cache_lookup, reference_png, ref_hash)]
+
+    quality = quality_for(kind)
+    h = prompt_hash(prompt, aspect, quality, ref_hash)
+    base = {"kind": kind, "prompt": prompt, "aspect": aspect,
+            "quality": quality, "prompt_hash": h}
+    if calls + n > MAX_IMAGE_CALLS_PER_RUN:
+        p, _ = _cache_fallback(kind)
+        return [{**base, "path": p, "from_cache": True, "cache_hit": False,
+                 "origin": "fallback", "cost_usd": 0.0, "saved_usd": 0.0}
+                for _ in range(n)]
+    try:
+        pngs = router.generate_images(prompt, aspect, quality,
+                                      task=f"image:{kind}",
+                                      reference_png=reference_png, n=n)
+        out = []
+        for i, png in enumerate(pngs):
+            path = GEN_DIR / f"{h[:16]}_{i}.png"
+            path.write_bytes(png)
+            out.append({**base, "path": str(path), "from_cache": False,
+                        "cache_hit": False, "origin": "generated",
+                        "cost_usd": tier_cost(quality, aspect), "saved_usd": 0.0})
+        return out
+    except Exception:
+        if not DEMO_MODE:
+            raise
+        p, _ = _cache_fallback(kind)
+        return [{**base, "path": p, "from_cache": True, "cache_hit": False,
+                 "origin": "fallback", "cost_usd": 0.0, "saved_usd": 0.0}
+                for _ in range(n)]
 
 
 def generate_assets_from_prompts(prompts: list, cache_lookup=None,
-                                 reference_png: bytes = None) -> list:
-    """Stage 2 of image generation: render HUMAN-APPROVED prompts. This is the
-    only code path that spends image budget. Returns asset records (render_one).
-    """
+                                 reference_png: bytes = None,
+                                 on_progress=None) -> list:
+    """Stage 2 of image generation: render HUMAN-APPROVED prompts (each may
+    carry n=1-4 variations). This is the only code path that spends image
+    budget. on_progress(i, total, records) streams each spec's finished
+    variations to the caller."""
     ref_hash = hashlib.sha256(reference_png).hexdigest()[:16] if reference_png else ""
     results, calls = [], 0
-    for spec in prompts:
-        rec = render_one(spec["prompt"], spec["aspect"], spec["kind"], calls,
-                         cache_lookup, reference_png, ref_hash)
-        if rec["origin"] == "generated":
-            calls += 1
-        results.append(rec)
+    for i, spec in enumerate(prompts):
+        recs = render_spec(spec, calls, cache_lookup, reference_png, ref_hash)
+        calls += sum(1 for r in recs if r["origin"] == "generated")
+        results.extend(recs)
+        if on_progress:
+            on_progress(i, len(prompts), recs)
     return results
 
 

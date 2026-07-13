@@ -97,15 +97,46 @@ OpenAI key covers ~30 full creative runs, and the prompt-hash cache never pays t
 for the same prompt (+reference). `MAX_IMAGE_CALLS_PER_RUN` caps each run;
 `DEMO_MODE=true` serves committed placeholders on any API failure.
 
+## The prompt compiler (asset-specific builders)
+
+There is deliberately NO single "generate marketing image" prompt - Hill's pet
+food and Palmolive skincare need different visual logic. The pipeline is:
+
+```
+PRODUCT KNOWLEDGE -> CREATIVE CONTEXT -> ASSET-SPECIFIC BUILDER
+    -> PRODUCT REFERENCE IMAGE(S) -> IMAGE GENERATION
+```
+
+Each asset type has a different JOB (`backend/skills/prompt_builders.py`):
+product shoot = desirability · amazon infographic = answer ONE question in 2s ·
+meta 4:5 = stop the scroll with ONE idea · meta 9:16 = vertical momentum ·
+bundle = sell the system · storyboard = a connected sequence. The prompt-writer
+model (gemini-3.5-flash) compiles CONTEXT + BUILDER + base template into one
+production-ready prompt per asset; the PRODUCT FIDELITY BLOCK (exact pack, no
+invented text/claims/badges) is appended in code, never left to the model.
+`amazon_main` is **locked**: its compliance template renders verbatim, never
+LLM-rewritten.
+
+## Streaming (the UI is never stuck)
+
+Draft and render run over **SSE** (`POST /creative/stream`,
+`/solo/creative/stream`, `/creative/render/stream`): status lines update the
+busy banner live, drafted prompts appear one by one as each builder compiles,
+and every finished image lands in the grid the moment the API returns it. The
+plain JSON endpoints drain the same generators - one code path.
+
 ## Creative flexibility (the user's knobs)
 
 - **Reference image** - upload a real product photo before generating; images route
   through `images.edit` (OpenAI) / image+text prompting (Gemini) so renders stay
   faithful to the actual pack. The reference is part of the cache key.
 - **Art direction** - a free-text tweak appended to every image prompt of the run.
-- **Per-asset prompt editing** - every generated tile has an *edit prompt* action →
-  regenerate just that image with your edited prompt (cache-aware: identical prompt
-  = $0).
+- **Variations (n=1-4)** - a per-prompt selector at the approval gate; n is passed
+  straight to the image API as the requested image count (ONE API request for
+  n variations). Cost scales n x tier; n>1 always generates fresh (no cache).
+- **Per-asset prompt editing** - every drafted prompt is editable before render;
+  every rendered tile has an *edit prompt* action → regenerate just that image
+  (cache-aware: identical single-image prompt = $0).
 - **Prompt transparency** - `GET /prompts` (and the *Inspect* card on the Overview
   screen) shows the exact system prompt each agent runs with.
 
@@ -248,10 +279,13 @@ POST /campaigns/{id}/research         re-run Agent 1 (consumes rejection feedbac
 POST /campaigns/{id}/plan             hand approved research to Agent 2
 POST /campaigns/{id}/decision         {stage: research|plan, action: approve|reject, feedback?}
 POST /creative                        {campaign_id, url, skill, reference_id?, prompt_tweak?}
-POST /creative/render                 {creative_id, prompts?} -> HUMAN-APPROVED render (the only image spend)
+POST /creative/stream                 SSE variant: status/profile/copy/prompt events, then done
+POST /creative/render                 {creative_id, prompts?[{kind,prompt,n:1-4}]} -> HUMAN-APPROVED render (the only image spend)
+POST /creative/render/stream          SSE variant: each finished image arrives as an asset event
 POST /solo/research                   {product, objective} -> Agent 1 standalone (no gates)
 POST /solo/plan                       {product?, objective?, campaign_id?} -> Agent 2 standalone
 POST /solo/creative                   {url, skill, product?, objective?, campaign_id?, reference_id?, prompt_tweak?}
+POST /solo/creative/stream            SSE variant of the solo draft stage
 POST /placement                       {creative_id} -> placements + expected metrics w/ probability
 POST /publish                         {creative_id} -> Approve & Publish (POC: recorded in DB)
 POST /video                           {creative_id} -> Seedance render | prompt (if disabled)

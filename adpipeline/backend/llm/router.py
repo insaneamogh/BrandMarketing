@@ -24,6 +24,8 @@ _MAP = {
     "placement": MODEL_CREATIVE,        # Agent 3 - placement + expected metrics
     "vision": MODEL_VISION,             # Agent 3 - URL diagnosis
     "copy": MODEL_BULK,                 # Agent 3 - copy blocks (lite)
+    "image_prompts": MODEL_STRATEGIST,  # Agent 3 - prompt compiler needs the
+                                        # strong text model, not lite
 }
 
 
@@ -75,3 +77,14 @@ def generate_image(prompt: str, aspect: str = "1:1", quality: str = "medium",
                                             reference_png=reference_png)
     return openai_client.generate_image(prompt, aspect, quality, task,
                                         reference_png=reference_png)
+
+
+def generate_images(prompt: str, aspect: str = "1:1", quality: str = "medium",
+                    task: str = "image", reference_png: bytes = None,
+                    n: int = 1) -> List[bytes]:
+    """n=1-4 variations. OpenAI gets n in ONE API request; Gemini loops (free)."""
+    if IMAGE_PROVIDER == "gemini":
+        return gemini_client.generate_images(prompt, aspect, quality, task,
+                                             reference_png=reference_png, n=n)
+    return openai_client.generate_images(prompt, aspect, quality, task,
+                                         reference_png=reference_png, n=n)

@@ -191,6 +191,14 @@ async def solo_creative(url: str, skill: str, product: str = None,
                         reference_id: str = None, prompt_tweak: str = None) -> dict:
     """Agent 3 standalone - 'just generate an ad'. No plan required: the objective
     (or the product profile alone) is the brief."""
+    return await _drain(solo_creative_stream(
+        url, skill, product, objective, campaign_id, reference_id, prompt_tweak))
+
+
+async def solo_creative_stream(url: str, skill: str, product: str = None,
+                               objective: str = None, campaign_id: int = None,
+                               reference_id: str = None, prompt_tweak: str = None):
+    """Solo-mode draft stage as an event stream (no gates)."""
     db = SessionLocal()
     try:
         if campaign_id:
@@ -206,7 +214,9 @@ async def solo_creative(url: str, skill: str, product: str = None,
             db.add(c)
             db.commit()
             db.refresh(c)
-        return await _generate_creative(db, c, url, skill, reference_id, prompt_tweak)
+        async for ev in _generate_creative_events(db, c, url, skill,
+                                                  reference_id, prompt_tweak):
+            yield ev
     finally:
         db.close()
 
@@ -245,8 +255,30 @@ def decide(campaign_id: int, stage: str, action: str, feedback: str = None) -> d
 
 
 # ---------------- stage 3: creative (Agent 3) ----------------
+# The draft and render stages are async EVENT GENERATORS so the API can stream
+# progress over SSE (the user watches prompts and images land one by one).
+# The plain JSON endpoints drain the same generators - one code path.
+
+async def _drain(gen) -> dict:
+    """Consume an event generator to completion; return the done payload."""
+    final = None
+    async for ev in gen:
+        if ev.get("type") == "done":
+            final = ev.get("data")
+    if final is None:
+        raise ValueError("stream ended without a result")
+    return final
+
+
 async def run_creative(campaign_id: int, url: str, skill: str,
                        reference_id: str = None, prompt_tweak: str = None) -> dict:
+    return await _drain(run_creative_stream(
+        campaign_id, url, skill, reference_id, prompt_tweak))
+
+
+async def run_creative_stream(campaign_id: int, url: str, skill: str,
+                              reference_id: str = None, prompt_tweak: str = None):
+    """Chain-mode draft stage as an event stream (gated on an approved plan)."""
     db = SessionLocal()
     try:
         c = db.get(Campaign, campaign_id)
@@ -256,23 +288,29 @@ async def run_creative(campaign_id: int, url: str, skill: str,
         if (c.mode or "chain") != "solo" and c.status not in ("plan_approved", "published"):
             raise ValueError(
                 f"creative requires an approved plan (campaign is {c.status})")
-        return await _generate_creative(db, c, url, skill, reference_id, prompt_tweak)
+        async for ev in _generate_creative_events(db, c, url, skill,
+                                                  reference_id, prompt_tweak):
+            yield ev
     finally:
         db.close()
 
 
-async def _generate_creative(db, c: Campaign, url: str, skill: str,
-                             reference_id: str = None, prompt_tweak: str = None) -> dict:
+async def _generate_creative_events(db, c: Campaign, url: str, skill: str,
+                                    reference_id: str = None,
+                                    prompt_tweak: str = None):
     """Shared Agent 3 DRAFT stage: deterministic URL scrape -> profile, copy
-    blocks, and LONG-FORM image prompts (all on the free tier). NO image model
-    is called here - the human approves the drafted prompts first, then
-    render_creative() spends the image budget.
+    blocks, and per-asset image prompts compiled through the asset-specific
+    builders (all on the free tier). NO image model is called here - the human
+    approves the drafted prompts (and picks n per prompt) first, then the
+    render stage spends the image budget.
 
-    Works with OR without a plan: with one, the approved campaign angle is the
-    brief; without (solo), the objective is the brief."""
+    Yields: status / profile / copy / prompt events, then done with the full
+    CreativeResponse."""
     plan = PlanOutput.model_validate_json(c.plan_json) if c.plan_json else None
     plan_summary = plan.plan_summary if plan else (c.objective or "Standalone ad generation")
     campaign_angle = plan.campaign_angle if plan else ""
+    target_segment = plan.target_segment if plan else ""
+    channels = plan.recommended_channels if plan else None
 
     reference_path = None
     if reference_id:
@@ -283,15 +321,37 @@ async def _generate_creative(db, c: Campaign, url: str, skill: str,
     token = cost.current_campaign_id.set(c.id)
     try:
         skill_def = _get_skill(skill)
-        profile = await asyncio.to_thread(url_diagnosis.diagnose, url)
 
+        yield {"type": "status", "step": "profile",
+               "message": "Diagnosing the product URL"}
+        profile = await asyncio.to_thread(url_diagnosis.diagnose, url)
+        yield {"type": "profile", "data": profile.model_dump()}
+
+        yield {"type": "status", "step": "copy",
+               "message": "Writing platform copy blocks"}
         copy_blocks = await asyncio.to_thread(
             creative_agent.generate_copy, profile, skill_def,
             plan_summary, campaign_angle)
+        yield {"type": "copy", "data": copy_blocks}
 
-        prompts = await asyncio.to_thread(
-            creative_agent.draft_prompts, profile, skill_def,
-            plan_summary, campaign_angle, prompt_tweak or "")
+        yield {"type": "status", "step": "context",
+               "message": "Building the product creative context"}
+        context = await asyncio.to_thread(
+            creative_agent.build_context, profile, plan_summary,
+            campaign_angle, target_segment, channels, c.objective or "")
+
+        specs = skill_def["image_specs"]
+        prompts = []
+        for i, spec in enumerate(specs):
+            label = ("compliance-locked template" if spec.get("locked")
+                     else f"{spec.get('builder', 'product_shoot')} builder")
+            yield {"type": "status", "step": "prompt",
+                   "message": f"Compiling {spec['kind']} prompt ({i + 1}/{len(specs)}, {label})"}
+            d = await asyncio.to_thread(
+                creative_agent.draft_one, spec, profile, context,
+                prompt_tweak or "")
+            prompts.append(d)
+            yield {"type": "prompt", "index": i, "total": len(specs), "data": d}
 
         creative = Creative(
             campaign_id=c.id, url=url, skill=skill,
@@ -303,18 +363,23 @@ async def _generate_creative(db, c: Campaign, url: str, skill: str,
         db.commit()
         db.refresh(creative)
 
-        return CreativeResponse(
+        yield {"type": "done", "data": CreativeResponse(
             creative_id=creative.id, campaign_id=c.id, profile=profile,
             assets=[], copy_blocks=copy_blocks, prompts=prompts, rendered=False,
             reference_used=bool(reference_path), prompt_tweak=prompt_tweak,
-            cost_usd=_campaign_cost(db, c.id)).model_dump()
+            cost_usd=_campaign_cost(db, c.id)).model_dump()}
     finally:
         cost.current_campaign_id.reset(token)
 
 
 async def render_creative(creative_id: int, prompt_edits: list = None) -> dict:
-    """Stage 2: the human approved (and possibly edited) the drafted prompts.
-    This is the ONLY entry point that calls the paid image model."""
+    return await _drain(render_creative_stream(creative_id, prompt_edits))
+
+
+async def render_creative_stream(creative_id: int, prompt_edits: list = None):
+    """Stage 2: the human approved (and possibly edited) the drafted prompts,
+    each carrying n=1-4 requested variations. This is the ONLY entry point
+    that calls the paid image model. Streams each asset as it lands."""
     db = SessionLocal()
     try:
         creative = db.get(Creative, creative_id)
@@ -336,45 +401,58 @@ async def render_creative(creative_id: int, prompt_edits: list = None) -> dict:
                 text = (edit.get("prompt") or "").strip()
                 if text:
                     spec["prompt"] = text
+                spec["n"] = max(1, min(4, int(edit.get("n") or 1)))
         creative.prompts_json = json.dumps(prompts)
+        db.commit()
 
         profile = ProductProfile.model_validate_json(creative.profile_json)
         reference_png = None
         if creative.reference_path and Path(creative.reference_path).exists():
             reference_png = Path(creative.reference_path).read_bytes()
+        ref_hash = (hashlib.sha256(reference_png).hexdigest()[:16]
+                    if reference_png else "")
 
+        brand = _brand_key(profile)
+        assets_out, calls = [], 0
         token = cost.current_campaign_id.set(creative.campaign_id)
         try:
-            asset_rows = await asyncio.to_thread(
-                creative_agent.generate_assets_from_prompts,
-                prompts, _cache_lookup, reference_png)
+            for i, spec in enumerate(prompts):
+                n = max(1, min(4, int(spec.get("n") or 1)))
+                yield {"type": "status", "step": "render",
+                       "message": (f"Rendering {spec['kind']} "
+                                   f"({i + 1}/{len(prompts)}"
+                                   + (f", {n} variations" if n > 1 else "") + ")")}
+                recs = await asyncio.to_thread(
+                    creative_agent.render_spec, spec, calls,
+                    _cache_lookup, reference_png, ref_hash)
+                calls += sum(1 for r in recs if r["origin"] == "generated")
+                for a in recs:
+                    rec = Asset(
+                        creative_id=creative.id, campaign_id=creative.campaign_id,
+                        brand=brand, skill=creative.skill, kind=a["kind"],
+                        prompt=a["prompt"], prompt_hash=a["prompt_hash"],
+                        aspect=a["aspect"], quality=a["quality"], path=a["path"],
+                        from_cache=1 if a["from_cache"] else 0,
+                        cache_hit=1 if a["cache_hit"] else 0,
+                        origin=a["origin"], cost_usd=a["cost_usd"])
+                    db.add(rec)
+                    db.commit()
+                    db.refresh(rec)
+                    out = _asset_out(rec)
+                    assets_out.append(out)
+                    yield {"type": "asset", "index": i, "total": len(prompts),
+                           "data": out.model_dump()}
         finally:
             cost.current_campaign_id.reset(token)
 
-        brand = _brand_key(profile)
-        assets_out = []
-        for a in asset_rows:
-            rec = Asset(
-                creative_id=creative.id, campaign_id=creative.campaign_id,
-                brand=brand, skill=creative.skill, kind=a["kind"],
-                prompt=a["prompt"], prompt_hash=a["prompt_hash"],
-                aspect=a["aspect"], quality=a["quality"], path=a["path"],
-                from_cache=1 if a["from_cache"] else 0,
-                cache_hit=1 if a["cache_hit"] else 0,
-                origin=a["origin"], cost_usd=a["cost_usd"])
-            db.add(rec)
-            db.commit()
-            db.refresh(rec)
-            assets_out.append(_asset_out(rec))
-
-        return CreativeResponse(
+        yield {"type": "done", "data": CreativeResponse(
             creative_id=creative.id, campaign_id=creative.campaign_id,
             profile=profile, assets=assets_out,
             copy_blocks=json.loads(creative.copy_json or "{}"),
             prompts=prompts, rendered=True,
             reference_used=bool(reference_png),
             prompt_tweak=creative.prompt_tweak,
-            cost_usd=_campaign_cost(db, creative.campaign_id)).model_dump()
+            cost_usd=_campaign_cost(db, creative.campaign_id)).model_dump()}
     finally:
         db.close()
 

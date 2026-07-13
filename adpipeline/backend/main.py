@@ -1,7 +1,9 @@
 """FastAPI app: routes for the staged 3-agent handoff pipeline."""
+import json
+
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 import orchestrator
@@ -140,6 +142,22 @@ async def solo_creative(inp: SoloCreativeInput):
         raise HTTPException(400, str(e))
 
 
+def _sse(gen):
+    """Wrap an orchestrator event generator as an SSE response. Errors become
+    a final error event (the stream is already 200 by the time they surface)."""
+    async def eventgen():
+        try:
+            async for ev in gen:
+                yield f"data: {json.dumps(ev)}\n\n"
+        except ValueError as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': f'internal error: {e}'})}\n\n"
+    return StreamingResponse(
+        eventgen(), media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
 @app.post("/creative")
 async def creative(inp: CreativeInput):
     """Agent 3 DRAFT: URL diagnosis -> copy + long-form image prompts (free tier).
@@ -151,15 +169,40 @@ async def creative(inp: CreativeInput):
         raise HTTPException(400, str(e))
 
 
+@app.post("/creative/stream")
+async def creative_stream(inp: CreativeInput):
+    """SSE variant of the draft stage: status / profile / copy / prompt events
+    stream as each step completes, ending with a done event."""
+    return _sse(orchestrator.run_creative_stream(
+        inp.campaign_id, inp.url, inp.skill, inp.reference_id, inp.prompt_tweak))
+
+
+@app.post("/solo/creative/stream")
+async def solo_creative_stream(inp: SoloCreativeInput):
+    """SSE variant of the solo draft stage."""
+    return _sse(orchestrator.solo_creative_stream(
+        inp.url, inp.skill, inp.product, inp.objective,
+        inp.campaign_id, inp.reference_id, inp.prompt_tweak))
+
+
 @app.post("/creative/render")
 async def creative_render(inp: RenderInput):
-    """Agent 3 RENDER: the human approved (optionally edited) the drafted prompts.
-    This is the only endpoint that calls the paid image model."""
+    """Agent 3 RENDER: the human approved (optionally edited) the drafted prompts,
+    each with n=1-4 variations. This is the only endpoint that calls the paid
+    image model."""
     try:
         edits = [p.model_dump() for p in inp.prompts] if inp.prompts else None
         return await orchestrator.render_creative(inp.creative_id, edits)
     except ValueError as e:
         raise HTTPException(400, str(e))
+
+
+@app.post("/creative/render/stream")
+async def creative_render_stream(inp: RenderInput):
+    """SSE variant of the render stage: each finished image arrives as an
+    asset event, ending with a done event."""
+    edits = [p.model_dump() for p in inp.prompts] if inp.prompts else None
+    return _sse(orchestrator.render_creative_stream(inp.creative_id, edits))
 
 
 @app.post("/placement")

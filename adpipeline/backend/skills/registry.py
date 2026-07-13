@@ -6,6 +6,13 @@ at execution time. `kind` labels the asset for the UI and placement pass.
 Prompt templates may use {name} {category} {pack_description} {brand_colors}
 {key_claims} {price_tier} placeholders.
 
+Each spec also carries either:
+- `builder`: the asset-specific creative-direction key in
+  skills/prompt_builders.py - the prompt-writer model compiles the final
+  long-form prompt from CONTEXT + BUILDER + this template; or
+- `locked: True`: the template renders VERBATIM, never LLM-rewritten
+  (amazon_main - marketplace compliance beats creativity).
+
 Prompt style guide (applies to every template below):
 - One subject, one story per frame; say what the camera sees, not marketing talk.
 - Name the light (softbox, golden hour, high-key daylight) and the lens feel
@@ -30,27 +37,27 @@ SKILLS = {
         "command": "/product-shoot",
         "description": "4-image core product shoot: white-bg packshot, texture macro, lifestyle, flat-lay.",
         "image_specs": [
-            {"kind": "packshot", "aspect": "1:1", "n": 1,
+            {"kind": "packshot", "aspect": "1:1", "n": 1, "builder": "product_shoot",
              "prompt_template": _BASE_STYLE + (
                  " Studio hero packshot: seamless white cyclorama background, product "
                  "perfectly centered and upright, twin softbox lighting with a gentle "
                  "top-left key, soft natural contact shadow beneath the pack, subtle "
                  "front reflection. 85mm product lens look, f/8 sharpness edge to edge.")},
-            {"kind": "texture_macro", "aspect": "1:1", "n": 1,
+            {"kind": "texture_macro", "aspect": "1:1", "n": 1, "builder": "product_shoot",
              "prompt_template": _BASE_STYLE + (
                  " Extreme macro detail shot of the product's texture or key ingredient "
                  "(the substance itself - kibble, cream swirl, gel, oil droplets - "
                  "whichever matches the category), 100mm macro lens, razor-thin depth of "
                  "field, glistening specular highlights, backlit rim light, the pack "
                  "softly blurred in the background for context.")},
-            {"kind": "lifestyle", "aspect": "1:1", "n": 1,
+            {"kind": "lifestyle", "aspect": "1:1", "n": 1, "builder": "product_shoot",
              "prompt_template": _BASE_STYLE + (
                  " Authentic lifestyle scene of the product genuinely in use in its "
                  "natural setting, warm golden-hour window light, candid documentary "
                  "feel, 35mm editorial lens, shallow depth of field with the pack "
                  "clearly legible in the frame. Real skin/fur texture, no plastic "
                  "retouching, believable home environment.")},
-            {"kind": "flatlay", "aspect": "1:1", "n": 1,
+            {"kind": "flatlay", "aspect": "1:1", "n": 1, "builder": "product_shoot",
              "prompt_template": _BASE_STYLE + (
                  " Overhead 90-degree flat-lay on a clean textured surface (linen, "
                  "stone or light wood), the pack as the anchor with 3-4 complementary "
@@ -68,7 +75,7 @@ SKILLS = {
         "command": "/amazon",
         "description": "Amazon listing set: compliant main image + 2 lifestyle + benefits infographic-style + A+ copy.",
         "image_specs": [
-            {"kind": "amazon_main", "aspect": "1:1", "n": 1,
+            {"kind": "amazon_main", "aspect": "1:1", "n": 1, "locked": True,
              "prompt_template": (
                  "Amazon listing MAIN image of {name} ({category}), strict marketplace "
                  "compliance: PURE WHITE #FFFFFF seamless background with zero shadows on "
@@ -78,19 +85,19 @@ SKILLS = {
                  "ABSOLUTELY NO added text, badges, borders, props, reflections, "
                  "graphics or watermarks (Amazon main-image policy). Brand colors appear "
                  "on the pack label only: {brand_colors}.")},
-            {"kind": "lifestyle", "aspect": "1:1", "n": 1,
+            {"kind": "lifestyle", "aspect": "1:1", "n": 1, "builder": "amazon_lifestyle",
              "prompt_template": _BASE_STYLE + (
                  " Amazon secondary image: aspirational in-use scene showing the product "
                  "solving its job for a real person or pet, bright optimistic daylight, "
                  "clean modern setting, pack label readable, composition leaves the "
                  "product unmistakably the subject.")},
-            {"kind": "lifestyle", "aspect": "1:1", "n": 1,
+            {"kind": "lifestyle", "aspect": "1:1", "n": 1, "builder": "amazon_lifestyle",
              "prompt_template": _BASE_STYLE + (
                  " Amazon secondary image, second context: a different moment of the "
                  "routine (morning vs evening, indoors vs outdoors) with human or pet "
                  "warmth and genuine emotion, distinct from the first lifestyle frame - "
                  "different setting, palette temperature and camera angle.")},
-            {"kind": "infographic", "aspect": "1:1", "n": 1,
+            {"kind": "infographic", "aspect": "1:1", "n": 1, "builder": "amazon_infographic",
              "prompt_template": (
                  "Amazon benefits-infographic STYLE image for {name} ({category}): the "
                  "pack rendered faithfully ({pack_description}) on one side, and 3 clean "
@@ -111,14 +118,14 @@ SKILLS = {
         "command": "/meta",
         "description": "Meta paid-social set: 4:5 feed + 9:16 story frame, hook overlays, primary text + headline.",
         "image_specs": [
-            {"kind": "meta_feed", "aspect": "4:5", "n": 1,
+            {"kind": "meta_feed", "aspect": "4:5", "n": 1, "builder": "meta_45",
              "prompt_template": _BASE_STYLE + (
                  " Scroll-stopping 4:5 Meta feed composition: bold single-subject "
                  "framing, high color contrast against the feed's white UI, product "
                  "hero at the visual center of gravity, one strong diagonal or leading "
                  "line, and clean uncluttered space in the TOP THIRD reserved for a "
                  "text hook overlay added later. Thumb-stopping in the first 100ms.")},
-            {"kind": "meta_story", "aspect": "9:16", "n": 1,
+            {"kind": "meta_story", "aspect": "9:16", "n": 1, "builder": "meta_916",
              "prompt_template": _BASE_STYLE + (
                  " Vertical 9:16 story/reel key frame: immersive full-bleed scene with "
                  "motion energy (pour, splash, mid-action moment frozen), product "
@@ -137,16 +144,16 @@ SKILLS = {
         "command": "/bundle",
         "description": "Everything above + a 6-frame VIDEO STORYBOARD (stills + shot notes + video prompt). Video renders only on an explicit Seedance call - never inside this skill.",
         "image_specs": [
-            {"kind": "packshot", "aspect": "1:1", "n": 1,
+            {"kind": "packshot", "aspect": "1:1", "n": 1, "builder": "product_shoot",
              "prompt_template": _BASE_STYLE + (
                  " Studio hero packshot: seamless white background, centered product, "
                  "twin softbox lighting, soft contact shadow, 85mm product lens look.")},
-            {"kind": "lifestyle", "aspect": "4:5", "n": 1,
+            {"kind": "lifestyle", "aspect": "4:5", "n": 1, "builder": "bundle",
              "prompt_template": _BASE_STYLE + (
                  " Social-first 4:5 lifestyle hero: product in authentic use, warm "
                  "directional light, editorial 35mm feel, top third kept clean for a "
                  "hook overlay.")},
-            {"kind": "storyboard", "aspect": "16:9", "n": 1,
+            {"kind": "storyboard", "aspect": "16:9", "n": 1, "builder": "storyboard",
              "prompt_template": _BASE_STYLE + (
                  " Cinematic 16:9 OPENING FRAME of a product commercial: establishing "
                  "shot that sets mood and place before the product appears, anamorphic "

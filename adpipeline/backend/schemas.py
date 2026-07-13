@@ -124,7 +124,8 @@ class ImagePromptSpec(BaseModel):
     kind: str
     aspect: str
     prompt: str
-    est_cost_usd: float = 0.0
+    est_cost_usd: float = 0.0     # per image; total = est_cost_usd * n
+    n: int = 1                    # 1-4 variations, passed to the image API as n
 
 
 class CreativeInput(BaseModel):
@@ -138,6 +139,7 @@ class CreativeInput(BaseModel):
 class PromptEdit(BaseModel):
     kind: str
     prompt: str
+    n: int = 1                    # 1-4 variations requested for this prompt
 
 
 class RenderInput(BaseModel):

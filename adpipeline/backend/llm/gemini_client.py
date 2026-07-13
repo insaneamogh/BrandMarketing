@@ -163,6 +163,15 @@ def generate_image(prompt: str, aspect: str = "1:1", quality: str = "medium",
     raise RuntimeError("gemini image response contained no image data")
 
 
+def generate_images(prompt: str, aspect: str = "1:1", quality: str = "medium",
+                    task: str = "image", reference_png: bytes = None,
+                    n: int = 1) -> List[bytes]:
+    """n-variation parity with the OpenAI client. The Gemini image API has no
+    n parameter, so this loops n single requests (free tier, $0 each)."""
+    return [generate_image(prompt, aspect, quality, task, reference_png)
+            for _ in range(max(1, min(4, n)))]
+
+
 # ---------- google_search grounding ----------
 def search_enrich(query: str, task: str = "gemini_search") -> str:
     """Grounded text answer using google_search. Returns text; '' on failure.

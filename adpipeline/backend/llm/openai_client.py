@@ -82,34 +82,43 @@ def embed(texts: List[str]) -> List[List[float]]:
     return [d.embedding for d in resp.data]
 
 
-def generate_image(prompt: str, aspect: str = "1:1", quality: str = "medium",
-                   task: str = "image", reference_png: bytes = None) -> bytes:
-    """Image gen. Returns PNG bytes. Raises on failure (caller handles cache).
+def generate_images(prompt: str, aspect: str = "1:1", quality: str = "medium",
+                    task: str = "image", reference_png: bytes = None,
+                    n: int = 1) -> List[bytes]:
+    """Image gen. Returns a list of n PNG byte strings (n=1-4 is passed to the
+    image API as the requested variation count - ONE API request).
 
     reference_png: optional user-uploaded reference - routed through
     images.edit so the generation stays faithful to the real product.
-    Cost is logged at the requested quality tier; a repeat prompt never reaches
-    here (the caller's prompt-hash cache short-circuits it at $0).
+    Cost is logged n x the quality tier; a repeat single-image prompt never
+    reaches here (the caller's prompt-hash cache short-circuits it at $0).
     """
     import io
     from config import tier_cost
-    # gpt-image-1 accepts ONLY these sizes; 4:5 renders on the portrait canvas.
+    n = max(1, min(4, n))
+    # gpt-image accepts ONLY these sizes; 4:5 renders on the portrait canvas.
     size = {"1:1": "1024x1024", "4:5": "1024x1536",
             "9:16": "1024x1536", "16:9": "1536x1024"}.get(aspect, "1024x1024")
     if reference_png:
         ref = io.BytesIO(reference_png)
         ref.name = "reference.png"
         resp = client().images.edit(
-            model=MODEL_IMAGE, image=ref, prompt=prompt, size=size, n=1,
+            model=MODEL_IMAGE, image=ref, prompt=prompt, size=size, n=n,
             quality=quality,
         )
     else:
         resp = client().images.generate(
-            model=MODEL_IMAGE, prompt=prompt, size=size, n=1, quality=quality,
+            model=MODEL_IMAGE, prompt=prompt, size=size, n=n, quality=quality,
         )
-    cost.log_image(MODEL_IMAGE, f"{task}:{quality}",
-                   cost_usd=tier_cost(quality, aspect))
-    return base64.b64decode(resp.data[0].b64_json)
+    cost.log_image(MODEL_IMAGE, f"{task}:{quality}", n=n,
+                   cost_usd=tier_cost(quality, aspect) * n)
+    return [base64.b64decode(d.b64_json) for d in resp.data]
+
+
+def generate_image(prompt: str, aspect: str = "1:1", quality: str = "medium",
+                   task: str = "image", reference_png: bytes = None) -> bytes:
+    """Single-image convenience wrapper over generate_images."""
+    return generate_images(prompt, aspect, quality, task, reference_png, 1)[0]
 
 
 def _log(model, task, resp, t0):

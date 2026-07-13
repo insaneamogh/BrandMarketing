@@ -67,12 +67,22 @@ frame, no text overlay) · `/meta` (4:5 + 9:16 + hook overlays) · `/bundle` (al
 6-frame storyboard + text-to-video prompt - video renders only via the explicit
 `POST /video` Seedance call, never inside the skill).
 
-Each `image_spec` carries `kind` + `aspect`; the router assigns a **quality tier**
-per kind (`config.QUALITY_BY_KIND`): hero/compliance → `high`, lifestyle/infographic
-→ `medium`, storyboard stills → `low`. Tier maps to per-image cost
-(`config.IMAGE_TIERS` - gpt-image 1024² pricing estimates; non-square bills 1.5x
-via `config.tier_cost`. Adjust the three tier values if gpt-image-2 list prices
-differ).
+Each `image_spec` carries `kind` + `aspect` + either a `builder` key (its
+asset-specific creative direction in `skills/prompt_builders.py` - product
+shoot = desirability, infographic = ONE question in 2s, meta 4:5 = one
+scroll-stopping idea, meta 9:16 = vertical momentum, bundle = sell the system,
+storyboard = connected sequence) or `locked: True` (amazon_main - the
+compliance template renders verbatim, never LLM-rewritten). The prompt writer
+compiles PRODUCT CREATIVE CONTEXT + BUILDER + template into one production
+prompt per asset; the PRODUCT FIDELITY BLOCK is appended in code. At the
+approval gate the human can edit each prompt and request n=1-4 variations -
+n is passed to the image API as the image count in ONE request.
+
+The router assigns a **quality tier** per kind (`config.QUALITY_BY_KIND`):
+hero/compliance → `high`, lifestyle/infographic → `medium`, storyboard stills
+→ `low`. Tier maps to per-image cost (`config.IMAGE_TIERS` - gpt-image 1024²
+pricing estimates; non-square bills 1.5x via `config.tier_cost`; n variations
+bill n x tier. Adjust the three tier values if gpt-image-2 list prices differ).
 
 ## Prompt-hash caching (the visible cost-discipline story)
 
@@ -113,7 +123,10 @@ POST /campaigns/{id}/research   re-run Agent 1 (consumes rejection feedback)
 POST /campaigns/{id}/plan       hand approved research to Agent 2
 POST /campaigns/{id}/decision   {stage: research|plan, action: approve|reject, feedback?}
 POST /creative                  {campaign_id, url, skill, reference_id?, prompt_tweak?}
-POST /creative/render               {creative_id, prompts?} -> HUMAN-APPROVED render (the only image spend)
+POST /creative/stream           SSE: status/profile/copy/prompt events stream live, then done
+POST /creative/render           {creative_id, prompts?[{kind,prompt,n:1-4}]} -> HUMAN-APPROVED render (the only image spend)
+POST /creative/render/stream    SSE: each finished image arrives as an asset event
+POST /solo/creative/stream      SSE variant of the solo draft stage
 POST /solo/research             {product, objective} -> Agent 1 standalone (no gates)
 POST /solo/plan                 {product?, objective?, campaign_id?} -> Agent 2 standalone
 POST /solo/creative             {url, skill, product?, objective?, campaign_id?, ...} -> just generate an ad
