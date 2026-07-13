@@ -3,9 +3,8 @@ import { useEffect, useRef, useState } from "react";
 // @untitled-ui/icons-react package - 24px line icons, stroke inherits currentColor.
 import {
   BarChart10, Brush01, Check, CheckCircle, ClockRewind, Compass03, Diamond01,
-  Edit02, Expand01, HelpCircle, LayersTwo01, Link01, Menu01, RefreshCcw01,
-  Rocket02, SearchLg, Stars01, Target04, Trash01, Upload01, VideoRecorder,
-  XClose,
+  Edit02, HelpCircle, LayersTwo01, Link01, Menu01, RefreshCcw01, Rocket02,
+  SearchLg, Stars01, Target04, Trash01, Upload01, VideoRecorder, XClose,
 } from "@untitled-ui/icons-react";
 
 // ============================================================
@@ -2307,85 +2306,6 @@ function AssetTile({ a: initial, onCost }) {
   );
 }
 
-/* Click-to-enlarge lightbox: bigger than the inline player but bounded by
-   page padding on all sides - never true browser/OS fullscreen. */
-function VideoLightbox({ src, onClose }) {
-  useEffect(() => {
-    const onKey = (e) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-  return (
-    <div
-      onClick={onClose}
-      style={{
-        position: "fixed", inset: 0, zIndex: 300,
-        background: "rgba(11,29,51,0.72)", backdropFilter: "blur(6px)",
-        WebkitBackdropFilter: "blur(6px)",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        padding: 32,
-      }}
-    >
-      <div onClick={(e) => e.stopPropagation()} style={{ position: "relative", width: "100%", maxWidth: 880 }}>
-        <video
-          controls autoPlay
-          controlsList="nofullscreen noremoteplayback"
-          disablePictureInPicture
-          src={src}
-          style={{
-            width: "100%", maxHeight: "78vh", display: "block",
-            borderRadius: 16, background: "#0B1D33",
-            boxShadow: "0 30px 90px rgba(0,0,0,0.5)",
-          }}
-        />
-        <button
-          onClick={onClose}
-          title="Close"
-          style={{
-            position: "absolute", top: -14, right: -14, width: 32, height: 32,
-            borderRadius: "50%", border: "none", background: "#fff", color: T.ink,
-            cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
-            boxShadow: "0 6px 18px rgba(0,0,0,0.3)",
-          }}
-        >
-          <XClose width={16} height={16} />
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/* Inline video player, sized to its container (never distorted or cropped -
-   objectFit defaults to "contain") - click the expand button to enlarge in
-   VideoLightbox rather than the browser's native fullscreen. */
-function InlinePlayer({ src, style, videoStyle }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div style={{ position: "relative", ...style }}>
-      <video
-        controls
-        controlsList="nofullscreen noremoteplayback"
-        disablePictureInPicture
-        src={src}
-        style={{ width: "100%", display: "block", background: "#0B1D33", ...videoStyle }}
-      />
-      <button
-        onClick={() => setOpen(true)}
-        title="Enlarge"
-        style={{
-          position: "absolute", top: 8, right: 8, width: 28, height: 28,
-          borderRadius: 8, border: "none", background: "rgba(11,29,51,0.65)",
-          color: "#fff", cursor: "pointer", display: "flex",
-          alignItems: "center", justifyContent: "center",
-        }}
-      >
-        <Expand01 width={14} height={14} />
-      </button>
-      {open && <VideoLightbox src={src} onClose={() => setOpen(false)} />}
-    </div>
-  );
-}
-
 function VideoPanel({ creative }) {
   const [video, setVideo] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -2443,7 +2363,7 @@ function VideoPanel({ creative }) {
 
       {video?.status === "done" && (
         <div style={{ marginTop: 16 }}>
-          <InlinePlayer src={video.url} style={{ maxWidth: 640, borderRadius: 12, overflow: "hidden" }} />
+          <video controls src={video.url} style={{ width: "100%", maxWidth: 640, borderRadius: 12, display: "block", background: "#0B1D33" }} />
           <div style={{ marginTop: 10, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
             <Pill color={T.green} bg={T.greenSoft}>
               {video.cached ? "CACHED · $0.00" : `RENDERED · $${(video.cost_usd || 0).toFixed(2)}`}
@@ -2744,7 +2664,7 @@ function Library({ onCost }) {
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(280px, 1fr))", gap: 14 }}>
           {videos.map((v) => (
             <div key={v.creative_id} style={{ ...glass, borderRadius: 14, overflow: "hidden", padding: 0 }}>
-              <InlinePlayer src={v.url} style={{ aspectRatio: "16/9" }} videoStyle={{ height: "100%", objectFit: "contain" }} />
+              <video controls src={v.url} style={{ width: "100%", display: "block", aspectRatio: "16/9", objectFit: "cover", background: "#0B1D33" }} />
               <div style={{ padding: "12px 15px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
                   <span style={{ fontSize: 13.5, fontWeight: 700 }}>{v.product}</span>
