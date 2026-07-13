@@ -5,9 +5,13 @@ Provenance: category sizing and dated competitor moves are REAL public data
 
 ## Category context (real)
 Global retail sales of pet food, treats and related products reached about
-$200 billion in 2024, growing 1.6% - a huge but maturing category. Nestlé Purina
+$200 billion in 2024, growing 1.6% - a huge but maturing category, and by 2025
+industry management described it as soft and "quite sluggish." Nestlé Purina
 PetCare and Mars Petcare have the two largest revenues in pet food worldwide;
-Hill's ($4.5B, FY2024) competes as the science/therapeutic specialist, not on scale.
+Hill's ($4.61B FY2025, organic growth decelerating to +1.2% with organic volume
+down 1.7% - see hills_regional_sales.md) competes as the science/therapeutic
+specialist, not on scale. In a flat category, every point of growth is a share
+fight against these two.
 
 ## Pet Nutrition (vs Hill's)
 - **Royal Canin (Mars):** breed/condition-specific precision-nutrition positioning;

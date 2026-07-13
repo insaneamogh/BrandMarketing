@@ -10,13 +10,21 @@ campaign (see campaign_history.md, "Quick-Commerce Blitz").
 - By early 2026 the market was clocking about ₹11,000 crore of GMV in a single
   month (~100% growth year over year) on roughly 7.8 million orders per day.
 
-## Platform landscape
-- Blinkit (Eternal/Zomato): market leader with more than 50% share as of
-  September 2025; gross order value of ₹11,821 crore in the quarter ended June
-  2025 - larger than Zomato's food-delivery business itself.
-- Zepto: FY25 revenue of ₹11,110 crore, up roughly 150% year over year.
-- Swiggy Instamart: Q4 FY25 gross order value of ₹4,670 crore, up 101% year over
-  year.
+## Platform landscape (January 2026 shares - Datum Intelligence via Reuters)
+- Blinkit (Eternal/Zomato): market leader at ~46% share; gross order value of
+  ₹11,821 crore in the quarter ended June 2025 - larger than Zomato's
+  food-delivery business itself - and the platform closest to profitability.
+- Swiggy Instamart: ~24% share; Q4 FY25 gross order value of ₹4,670 crore, up
+  101% year over year, though its adjusted EBITDA loss widened to ₹840 crore as
+  it added a record 316 dark stores in a single quarter.
+- Zepto: ~22% share; FY25 revenue more than doubled to ₹9,668 crore, but net
+  losses ballooned ~177% to ₹3,367 crore.
+- Infrastructure: more than 6,000 dark stores now operate across India
+  (Bernstein estimate); the segment was valued near $11.5 billion at the end of
+  2025.
+- Media-buying read: prioritize Blinkit for reach and stability; use Zepto and
+  Instamart for cheaper auction pressure - loss-making challengers discount ad
+  inventory and promotions to defend share.
 
 ## Category shift toward personal care & beauty
 Platforms are expanding well beyond grocery into beauty, personal care, electronics

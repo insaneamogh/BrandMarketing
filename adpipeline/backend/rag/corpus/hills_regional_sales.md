@@ -1,10 +1,25 @@
 # Hill's Pet Nutrition: Regional & Financial Snapshot
 
-Provenance: the "Reported financials" section is REAL public data from Colgate-Palmolive's
-FY2024 results (Form 10-K / Q4 2024 earnings release). Regional reads and implications are
-internal analyst interpretation layered on top for this demo.
+Provenance: the "Reported financials" sections are REAL public data from
+Colgate-Palmolive's FY2024 Form 10-K and FY2025 earnings releases / 10-Qs.
+Regional reads and implications are internal analyst interpretation layered on
+top for this demo.
 
-## Reported financials (FY2024, real)
+## Reported financials (FY2025, real) - GROWTH HAS DECELERATED
+- Hill's Pet Nutrition net sales: $4.61 billion in 2025, up 2.9% from $4.48
+  billion - but ORGANIC sales grew only +1.2% (vs +4.9% in 2024), a sharp
+  deceleration.
+- Organic VOLUME fell 1.7% in 2025: all remaining growth came from pricing, not
+  from more product sold. Reported volume fell 0.6%.
+- Management describes the overall pet category as soft and "quite sluggish" -
+  the post-pandemic pet-spending boom has normalized.
+- Hill's is now roughly 23% of Colgate-Palmolive's total company sales.
+- Diagnosis implication: with the category flat and volumes declining, growth
+  must come from SHARE (winning switchers via therapeutic/senior
+  differentiation) and CHANNEL MIX (e-commerce, under-penetrated APAC), not
+  from category lift.
+
+## Reported financials (FY2024, real - prior-year context)
 - Hill's Pet Nutrition net sales: $4,483 million in 2024, up 4.5% year over year
   (volume +0.8%, net selling prices +4.1%, foreign exchange -0.4%).
 - Organic sales grew +4.9% in 2024, led by the United States and by the

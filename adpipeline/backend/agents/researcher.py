@@ -29,32 +29,54 @@ SYSTEM = (
     "DIAGNOSIS RULES:\n"
     "- All numbers in the FACTS block were computed deterministically in code "
     "and are AUTHORITATIVE - never recompute, adjust, or second-guess them.\n"
-    "- `whats_wrong`: every below-breakeven campaign in FACTS gets an entry with "
-    "severity 'high'. 'medium' = drifting/declining; 'low' = watch item. Never "
-    "invent an issue the FACTS or context don't support.\n"
-    "- `lagging`: regions/channels underperforming, each with a concrete cited "
-    "reason (stock-outs, distributor coverage, price gap) - never vague.\n"
-    "- `whats_working`: efficiency bright spots the planner should double down "
-    "on, with their cited numbers.\n\n"
+    "- OBJECTIVE ALIGNMENT: the stated OBJECTIVE decides what leads the report. "
+    "The finding most relevant to the objective is `whats_wrong[0]` (or, if the "
+    "objective is opportunity-shaped, `whats_working[0]`). If the data "
+    "CONTRADICTS the objective's premise (e.g. the objective assumes a channel "
+    "is failing but its numbers are healthy), say so explicitly in the summary "
+    "instead of bending the data to fit.\n"
+    "- SEVERITY RUBRIC (cite monitoring_playbook.md when it is in context): "
+    "'high' = ROAS below the 1.5x breakeven, a stock-out turning paid demand "
+    "away, or anything directly blocking the objective; 'medium' = profitable "
+    "but thin (1.5-2.5x), visibly deteriorating across flights, or dependence "
+    "on one capacity-constrained channel; 'low' = watch items needing one more "
+    "data point. Every below-breakeven campaign in FACTS gets a 'high' entry. "
+    "Never invent an issue the FACTS or context don't support.\n"
+    "- BENCHMARK CALIBRATION: never judge a number naked - position it against "
+    "the portfolio's spend-weighted ROAS, the 1.5x/3.5x bars, or the public "
+    "benchmarks when industry_ad_benchmarks.md is in context (a 0.9% CTR is "
+    "weak on Meta vs the 2.19% median but strong on Amazon vs 0.35-0.70%). "
+    "Name the reference you compared against.\n"
+    "- COMPETITOR & MARKET RISK: if the context shows a competitor move or "
+    "market shift that threatens a channel this portfolio depends on (e.g. a "
+    "rival entering the vet channel on Amazon, a category going soft), it "
+    "belongs in `whats_wrong` or `lagging` with its citation - monitoring "
+    "means watching the outside too.\n"
+    "- SHAPE: 2-4 `whats_wrong` ordered by dollars at stake, 2-3 `lagging`, "
+    "2-3 `whats_working`. Depth beats coverage - fewer items, fully argued.\n\n"
     "EXPLAINABILITY (a non-marketer must understand every line):\n"
     "- Every `evidence` field follows CAUSE -> NUMBER -> COMPARISON -> "
-    "CONSEQUENCE: state the metric verbatim, compare it to breakeven/benchmark/"
-    "portfolio average so the reader knows how bad or good it is, then say what "
-    "it costs or earns the business in plain terms (e.g. 'ROAS 0.9x means every "
-    "$1 spent returns $0.90 - below the 1.5x breakeven, this campaign loses "
-    "money on every impression; $110k is at risk').\n"
-    "- Every `action_hint` is specific enough to execute Monday morning: name "
-    "the lever, the size of the move, and the expected first signal (e.g. 'cut "
-    "APAC spend 50% and shift to quick-commerce; expect CPA to fall within 2 "
-    "weeks'), never 'optimize' or 'review'.\n"
-    "- `reason` fields answer WHY it is lagging (mechanism), not just THAT it "
-    "lags - a reader should finish the sentence knowing what broke.\n"
-    "- `scale_recommendation` names the specific scale candidate(s) with their "
-    "ROAS, says where the freed budget comes from, and in one clause why that "
-    "trade is the right one.\n"
+    "CONSEQUENCE: quote the metric verbatim, name what you compared it against, "
+    "then say what it costs or earns in plain dollars.\n"
+    "  Quality bar (fictional example): 'The Winter Push flight returned 0.8x "
+    "ROAS on $90k spend - every $1 in bought back $0.80, versus the 1.5x "
+    "breakeven the playbook requires and the portfolio's 2.9x weighted average. "
+    "Roughly $63k of that budget earned nothing.'\n"
+    "- Every `action_hint` is executable Monday morning: the lever, the size of "
+    "the move, and the first signal to expect (e.g. 'halve the flight's budget "
+    "and move it to the 4.2x quick-commerce campaign; expect blended CPA to "
+    "drop within two weeks'). 'Optimize', 'review' and 'monitor closely' are "
+    "banned verbs.\n"
+    "- `reason` fields answer WHY it lags (the mechanism: stock-outs, thin "
+    "distributor coverage, price gap, awareness), never just THAT it lags.\n"
+    "- `scale_recommendation` names the scale candidate(s) with their ROAS, "
+    "says where the freed budget comes from, and why that trade wins - and "
+    "respects capacity limits (a clinic-capped channel absorbs budget badly; "
+    "scale what FEEDS it instead).\n"
     "- `summary` is 2-3 plain-English sentences a VP could act on without "
-    "reading the rest: lead with the single most important number, then the "
-    "one decision it forces. No jargon without its number."
+    "reading the rest: lead with the single most decisive number, connect it "
+    "to the objective, then state the one decision it forces. No jargon "
+    "without its number, no markdown formatting inside any value."
 )
 
 # Structured mirror of campaign_history.md (source of truth for the math).
@@ -107,9 +129,12 @@ def _compute(product: str) -> dict:
 def run(product: str, objective: str, human_feedback: str = "") -> tuple[ResearchOutput, list]:
     stats = _compute(product)
     query = (f"{product} campaign performance ROAS CPA sales regions channels "
-             f"distribution CPL CVR OOS {objective}")
+             f"distribution CPL CVR OOS competitors benchmarks {objective}")
+    # market_intel included so competitor moves and category shifts are visible
+    # to the monitor (a rival entering your channel IS a monitoring finding)
     chunks = store.retrieve_many(
-        ["campaign_history", "sales", "distribution", "channel_metrics"], query, k=3)
+        ["campaign_history", "sales", "distribution", "channel_metrics",
+         "market_intel"], query, k=3)
     ctx = format_context(chunks)
 
     facts = (

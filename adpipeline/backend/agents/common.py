@@ -15,11 +15,13 @@ GROUNDING_RULE = (
     "1. Answer ONLY from the retrieved context blocks below. Never invent facts, "
     "figures, regions, channels, or campaign names that are not in the context.\n"
     "2. Every claim MUST cite its source filename in a `sources` field (or inline "
-    "as [src: filename]) using ONLY the filenames shown in the context tags.\n"
+    "as [src: filename]) using ONLY the filenames shown in the context tags. "
+    "Cite at most 3 sources per item, most specific document first.\n"
     "3. Copy numbers (CPL, CVR, ROAS, %, $) VERBATIM from the context - never "
     "round, estimate, or recompute them.\n"
     "4. If the context does not support a claim, omit the claim entirely.\n"
-    "5. Return a single JSON object only - no markdown, no prose outside JSON."
+    "5. Return a single JSON object only - no markdown anywhere (not in values "
+    "either), no prose outside the JSON."
 )
 
 
@@ -47,10 +49,11 @@ def feedback_block(feedback: str) -> str:
     if not feedback:
         return ""
     return (
-        "\n\n## PRIOR HUMAN FEEDBACK (a previous brief was REJECTED)\n"
-        "The human approver rejected the last brief for the reason below. This "
+        "\n\n## PRIOR HUMAN FEEDBACK (your previous output at this stage was REJECTED)\n"
+        "The human approver rejected your last output for the reason below. This "
         "feedback OVERRIDES your default emphasis - visibly change your output to "
-        "address it, and do not repeat the rejected direction:\n"
+        "address it, do not repeat the rejected direction, and make the change "
+        "obvious enough that the approver can see their feedback was heard:\n"
         f"{feedback}\n"
     )
 

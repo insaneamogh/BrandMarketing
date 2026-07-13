@@ -38,6 +38,9 @@ MANIFEST = {
     # exact per-product facts quoted from the LIVE product pages (July 2026) -
     # in brand_guidelines so the copywriter/prompt-writer cite exact claims
     "product_catalog.md":          (["brand_guidelines", "market_intel"], "all", "global"),
+    # the monitoring/planning methodology (breakeven 1.5x, scale 3.5x, severity
+    # rubric, reallocation discipline) - lets Agents 1+2 CITE their own rulebook
+    "monitoring_playbook.md":      (["campaign_history", "channel_metrics", "market_intel"], "all", "global"),
 }
 
 _enc = None  # lazy: tiktoken downloads its BPE file on first use
