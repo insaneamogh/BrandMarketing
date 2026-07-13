@@ -13,6 +13,7 @@ video via orchestrator), then placement + expected metrics, then publish.
   knows what to expect before clicking Approve & Publish.
 """
 import hashlib
+import json
 from pathlib import Path
 
 from agents.common import GROUNDING_RULE, format_context
@@ -104,11 +105,28 @@ def _brand_key(profile: ProductProfile) -> str:
 
 
 # ---------- copy ----------
+def _fallback_copy(profile: ProductProfile, skill: dict) -> dict:
+    """Deterministic copy blocks from the profile - DEMO_MODE lifeline so the
+    draft stage never hard-fails when the text model/RAG is unreachable."""
+    claims = profile.key_claims or [profile.category]
+    out = {}
+    for key in skill["copy_blocks"]:
+        if any(k in key for k in ("bullet", "hook", "frames")):
+            out[key] = claims[:3]
+        else:
+            out[key] = f"{profile.name}: {claims[0]}"
+    out["note"] = "offline fallback copy (DEMO_MODE) - set API keys for real copy"
+    return out
+
+
 def generate_copy(profile: ProductProfile, skill: dict, plan_summary: str,
                   campaign_angle: str) -> dict:
     fam = _brand_key(profile)
-    chunks = store.retrieve("brand_guidelines",
-                            f"{profile.name} tone banned claims {fam}", k=3)
+    try:
+        chunks = store.retrieve("brand_guidelines",
+                                f"{profile.name} tone banned claims {fam}", k=3)
+    except Exception:
+        chunks = []  # no embeddings available - draft continues without context
     ctx = format_context(chunks)
     if campaign_angle:
         brief = (
@@ -130,7 +148,12 @@ def generate_copy(profile: ProductProfile, skill: dict, plan_summary: str,
         f"Produce these copy blocks as JSON keys: {skill['copy_blocks']}.\n"
         "Values are strings or arrays of strings. Stay on-brand and compliant."
     )
-    return router.chat_json("copy", COPY_SYSTEM, user, 0.6)
+    try:
+        return router.chat_json("copy", COPY_SYSTEM, user, 0.6)
+    except Exception:
+        if not DEMO_MODE:
+            raise
+        return _fallback_copy(profile, skill)
 
 
 # ---------- images ----------
@@ -188,26 +211,84 @@ def render_one(prompt: str, aspect: str, kind: str, calls: int,
                 "origin": "fallback", "cost_usd": 0.0, "saved_usd": 0.0}
 
 
-def generate_assets(profile: ProductProfile, skill: dict,
-                    cache_lookup=None, reference_png: bytes = None,
-                    prompt_tweak: str = "") -> list:
-    """Returns a list of asset records (see render_one).
+PROMPT_WRITER_SYSTEM = (
+    "You are AGENT 3 - CREATIVE (image prompt writer) in a 3-agent CPG marketing "
+    "pipeline. You write the image-generation prompts a HUMAN will review and "
+    "approve BEFORE any image model is called and any budget is spent - your "
+    "output is the last checkpoint before money moves.\n"
+    "For each requested asset, expand its base template into ONE long-form, "
+    "production-ready prompt of 90-160 words: concrete scene, subject and "
+    "action; the exact pack rendered faithfully from the profile's "
+    "pack_description (never contradict it); named lighting; lens/camera feel; "
+    "composition that suits the stated aspect ratio; mood and color grade "
+    "anchored to the brand palette.\n"
+    "HARD RULES: preserve every non-negotiable constraint from the base "
+    "template (pure white background, no on-image text, Amazon main-image "
+    "compliance, reserved overlay space...) - restate them explicitly in your "
+    "expanded prompt. No banned claims, no competitor references, no logos or "
+    "text beyond the pack label.\n"
+    'Return a single JSON object only: {"prompts": [{"kind": str, "prompt": '
+    'str}]} with EXACTLY one entry per requested asset, in the SAME ORDER as '
+    "given. No markdown, no prose outside the JSON."
+)
 
-    prompt_tweak: user art direction appended to EVERY image prompt (their
-    flexibility knob). reference_png: uploaded product photo the render must
-    stay faithful to.
+
+def draft_prompts(profile: ProductProfile, skill: dict, plan_summary: str,
+                  campaign_angle: str, prompt_tweak: str = "") -> list:
+    """Stage 1 of image generation: Gemini (free tier) expands each skill
+    template into a long-form prompt the human approves before any paid render.
+
+    Returns [{kind, aspect, prompt, est_cost_usd}]. Falls back to the
+    deterministic templates on any model failure so the flow never dies.
     """
     fields = profile.model_dump()
     fields["brand_colors"] = ", ".join(profile.brand_colors)
     fields["key_claims"] = "; ".join(profile.key_claims)
-    ref_hash = hashlib.sha256(reference_png).hexdigest()[:16] if reference_png else ""
 
-    results, calls = [], 0
+    base = []
     for spec in skill["image_specs"]:
-        prompt = spec["prompt_template"].format(**fields)
+        p = spec["prompt_template"].format(**fields)
         if prompt_tweak:
-            prompt = f"{prompt} Art direction from the marketing team: {prompt_tweak.strip()}"
-        rec = render_one(prompt, spec["aspect"], spec["kind"], calls,
+            p = f"{p} Art direction from the marketing team: {prompt_tweak.strip()}"
+        base.append({
+            "kind": spec["kind"], "aspect": spec["aspect"], "prompt": p,
+            "est_cost_usd": tier_cost(quality_for(spec["kind"]), spec["aspect"]),
+        })
+
+    try:
+        user = (
+            f"PRODUCT PROFILE: {profile.model_dump_json()}\n"
+            f"CREATIVE BRIEF: {campaign_angle or plan_summary or 'none provided'}\n"
+            f"SKILL: {skill['command']} - {skill['description']}\n"
+            f"PLATFORM RULES: {skill['platform_rules']}\n"
+            "BASE TEMPLATES (expand each into one long-form prompt; keep every "
+            "hard rule; same order):\n"
+            + json.dumps([{"kind": b["kind"], "aspect": b["aspect"],
+                           "template": b["prompt"]} for b in base])
+        )
+        data = router.chat_json("image_prompts", PROMPT_WRITER_SYSTEM, user, 0.5)
+        drafts = data.get("prompts", [])
+        if len(drafts) == len(base):
+            out = []
+            for b, d in zip(base, drafts):
+                text = (d.get("prompt") or "").strip()
+                # too-short output means the model dropped the constraints
+                out.append({**b, "prompt": text if len(text) > 80 else b["prompt"]})
+            return out
+    except Exception:
+        pass
+    return base
+
+
+def generate_assets_from_prompts(prompts: list, cache_lookup=None,
+                                 reference_png: bytes = None) -> list:
+    """Stage 2 of image generation: render HUMAN-APPROVED prompts. This is the
+    only code path that spends image budget. Returns asset records (render_one).
+    """
+    ref_hash = hashlib.sha256(reference_png).hexdigest()[:16] if reference_png else ""
+    results, calls = [], 0
+    for spec in prompts:
+        rec = render_one(spec["prompt"], spec["aspect"], spec["kind"], calls,
                          cache_lookup, reference_png, ref_hash)
         if rec["origin"] == "generated":
             calls += 1

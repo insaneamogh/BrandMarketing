@@ -148,7 +148,9 @@ export default function App() {
   const [placement, setPlacement] = useState(null);
   const [published, setPublished] = useState(null);
   const [cost, setCost] = useState({ total_usd: 0, by_model: [] });
-  const [loading, setLoading] = useState("");
+  // per-agent activity: {scope: {msg, ctrl}} - one agent running never blocks
+  // another, and every request can be cancelled from its own banner
+  const [busy, setBusy] = useState({});
   const [error, setError] = useState("");
   const isMobile = useIsMobile();
   const [navOpen, setNavOpen] = useState(false);   // mobile: pipeline drawer
@@ -177,6 +179,25 @@ export default function App() {
     } catch {}
   };
 
+  /* run one agent task under its own scope: independent spinner + cancel */
+  const runTask = async (scope, msg, fn) => {
+    const ctrl = new AbortController();
+    setBusy((b) => ({ ...b, [scope]: { msg, ctrl } }));
+    setError("");
+    try {
+      await fn(ctrl.signal);
+    } catch (e) {
+      if (e?.name !== "AbortError") setError(String(e.message || e));
+    } finally {
+      setBusy((b) => {
+        const next = { ...b };
+        delete next[scope];
+        return next;
+      });
+    }
+  };
+  const isBusy = (scope) => (busy[scope] ? busy[scope].msg : "");
+
   const switchMode = (m) => {
     if (m === mode) return;
     setMode(m);
@@ -197,13 +218,12 @@ export default function App() {
       ? campaign.id
       : null;
 
-  const soloResearch = async () => {
-    setError("");
-    setLoading("Agent 1 (solo): researching standalone…");
-    try {
+  const soloResearch = () =>
+    runTask("research", "Agent 1 (solo): researching standalone…", async (signal) => {
       const res = await api("/solo/research", {
         method: "POST",
         body: JSON.stringify({ product, objective }),
+        signal,
       });
       setCampaign(res);
       setCreative(null);
@@ -211,36 +231,23 @@ export default function App() {
       setPublished(null);
       setView("research");
       refreshCost();
-    } catch (e) {
-      setError(String(e.message || e));
-    } finally {
-      setLoading("");
-    }
-  };
+    });
 
-  const soloPlan = async () => {
-    setError("");
-    setLoading("Agent 2 (solo): planning straight from the knowledge base…");
-    try {
+  const soloPlan = () =>
+    runTask("plan", "Agent 2 (solo): planning straight from the knowledge base…", async (signal) => {
       const reuse = soloReuseId();
       const res = await api("/solo/plan", {
         method: "POST",
         body: JSON.stringify(reuse ? { campaign_id: reuse } : { product, objective }),
+        signal,
       });
       setCampaign(res);
       setView("plan");
       refreshCost();
-    } catch (e) {
-      setError(String(e.message || e));
-    } finally {
-      setLoading("");
-    }
-  };
+    });
 
-  const soloCreative = async (url, skill, referenceId, promptTweak) => {
-    setError("");
-    setLoading("Agent 3 (solo): diagnosing URL + generating assets…");
-    try {
+  const soloCreative = (url, skill, referenceId, promptTweak) =>
+    runTask("creative", "Agent 3 (solo): scraping URL + drafting prompts and copy (no image spend)…", async (signal) => {
       const res = await api("/solo/creative", {
         method: "POST",
         body: JSON.stringify({
@@ -252,6 +259,7 @@ export default function App() {
           reference_id: referenceId || null,
           prompt_tweak: promptTweak || null,
         }),
+        signal,
       });
       if (!campaign || campaign.id !== res.campaign_id) {
         setCampaign({
@@ -263,20 +271,14 @@ export default function App() {
       setPlacement(null);
       setPublished(null);
       refreshCost();
-    } catch (e) {
-      setError(String(e.message || e));
-    } finally {
-      setLoading("");
-    }
-  };
+    });
 
-  const startCampaign = async () => {
-    setError("");
-    setLoading("Agent 1: researching what's wrong…");
-    try {
+  const startCampaign = () =>
+    runTask("research", "Agent 1: researching what's wrong…", async (signal) => {
       const res = await api("/campaigns", {
         method: "POST",
         body: JSON.stringify({ product, objective }),
+        signal,
       });
       setCampaign(res);
       setCreative(null);
@@ -284,41 +286,22 @@ export default function App() {
       setPublished(null);
       setView("research");
       refreshCost();
-    } catch (e) {
-      setError(String(e.message || e));
-    } finally {
-      setLoading("");
-    }
-  };
+    });
 
-  const rerunResearch = async () => {
-    setError("");
-    setLoading("Agent 1: re-running with your feedback…");
-    try {
-      const res = await api(`/campaigns/${campaign.id}/research`, { method: "POST" });
+  const rerunResearch = () =>
+    runTask("research", "Agent 1: re-running with your feedback…", async (signal) => {
+      const res = await api(`/campaigns/${campaign.id}/research`, { method: "POST", signal });
       setCampaign(res);
       refreshCost();
-    } catch (e) {
-      setError(String(e.message || e));
-    } finally {
-      setLoading("");
-    }
-  };
+    });
 
-  const runPlan = async () => {
-    setError("");
-    setLoading("Agent 2: building the plan from approved research…");
-    try {
-      const res = await api(`/campaigns/${campaign.id}/plan`, { method: "POST" });
+  const runPlan = () =>
+    runTask("plan", "Agent 2: building the plan from approved research…", async (signal) => {
+      const res = await api(`/campaigns/${campaign.id}/plan`, { method: "POST", signal });
       setCampaign(res);
       setView("plan");
       refreshCost();
-    } catch (e) {
-      setError(String(e.message || e));
-    } finally {
-      setLoading("");
-    }
-  };
+    });
 
   const decide = async (stage, action, feedback) => {
     setError("");
@@ -335,10 +318,8 @@ export default function App() {
     }
   };
 
-  const genCreative = async (url, skill, referenceId, promptTweak) => {
-    setError("");
-    setLoading("Agent 3: diagnosing URL + generating assets…");
-    try {
+  const genCreative = (url, skill, referenceId, promptTweak) =>
+    runTask("creative", "Agent 3: scraping URL + drafting prompts and copy (no image spend)…", async (signal) => {
       const res = await api("/creative", {
         method: "POST",
         body: JSON.stringify({
@@ -348,58 +329,56 @@ export default function App() {
           reference_id: referenceId || null,
           prompt_tweak: promptTweak || null,
         }),
+        signal,
       });
       setCreative({ ...res, skill_used: skill });
       setPlacement(null);
       setPublished(null);
       refreshCost();
-    } catch (e) {
-      setError(String(e.message || e));
-    } finally {
-      setLoading("");
-    }
-  };
+    });
 
-  const plan = async () => {
-    setError("");
-    setLoading("Agent 3: placement + expected metrics…");
-    try {
+  /* the ONLY call that spends image budget - fires after the human approves
+     (and optionally edits) the drafted prompts */
+  const renderImages = (prompts) =>
+    runTask("render", "Rendering approved prompts with the image model…", async (signal) => {
+      const res = await api("/creative/render", {
+        method: "POST",
+        body: JSON.stringify({
+          creative_id: creative.creative_id,
+          prompts: prompts.map((p) => ({ kind: p.kind, prompt: p.prompt })),
+        }),
+        signal,
+      });
+      setCreative((c) => ({ ...res, skill_used: c?.skill_used }));
+      refreshCost();
+    });
+
+  const plan = () =>
+    runTask("placement", "Agent 3: placement + expected metrics…", async (signal) => {
       const res = await api("/placement", {
         method: "POST",
         body: JSON.stringify({ creative_id: creative.creative_id }),
+        signal,
       });
       setPlacement(res);
       refreshCost();
-    } catch (e) {
-      setError(String(e.message || e));
-    } finally {
-      setLoading("");
-    }
-  };
+    });
 
-  const doPublish = async () => {
-    setError("");
-    setLoading("Publishing…");
-    try {
+  const doPublish = () =>
+    runTask("publish", "Publishing…", async (signal) => {
       const res = await api("/publish", {
         method: "POST",
         body: JSON.stringify({ creative_id: creative.creative_id }),
+        signal,
       });
       setPublished(res);
       setCampaign((c) => ({ ...c, status: "published" }));
       refreshCost();
-    } catch (e) {
-      setError(String(e.message || e));
-    } finally {
-      setLoading("");
-    }
-  };
+    });
 
-  const openCampaign = async (id) => {
-    setError("");
-    setLoading("Loading campaign…");
-    try {
-      const d = await api(`/campaigns/${id}`);
+  const openCampaign = (id) =>
+    runTask("history", "Loading campaign…", async (signal) => {
+      const d = await api(`/campaigns/${id}`, { signal });
       setCampaign(d);
       setPublished(null);
       const last = d.creatives?.[d.creatives.length - 1];
@@ -410,6 +389,8 @@ export default function App() {
           profile: last.profile,
           assets: last.assets,
           copy_blocks: last.copy_blocks,
+          prompts: last.prompts || [],
+          rendered: last.rendered ?? (last.assets || []).length > 0,
           skill_used: last.skill,
           prompt_tweak: last.prompt_tweak,
           reference_used: last.reference_used,
@@ -435,12 +416,7 @@ export default function App() {
         : s.startsWith("plan") && s !== "plan_approved" ? "plan"
         : "creative"
       );
-    } catch (e) {
-      setError(String(e.message || e));
-    } finally {
-      setLoading("");
-    }
-  };
+    });
 
   const idx = FLOW.findIndex((f) => f.key === view);
   const calls = cost.by_model.reduce((a, m) => a + m.calls, 0);
@@ -505,23 +481,38 @@ export default function App() {
             <ModeToggle mode={mode} onSwitch={switchMode} onHelp={() => setHelpOpen(true)} />
             <TopBar view={view} go={setView} campaign={campaign} product={product} mode={mode} />
             {error && <Banner tone="err">{error}</Banner>}
-            {loading && <Banner tone="load">{loading}</Banner>}
+            {Object.entries(busy).map(([scope, b]) => (
+              <Banner key={scope} tone="load" onCancel={() => b.ctrl.abort()}>
+                {b.msg}
+              </Banner>
+            ))}
 
             {view === "overview" && (
               <Overview
-                {...{ product, setProduct, objective, setObjective, campaign, startCampaign, loading, mode, soloResearch, soloPlan, setView }}
+                {...{ product, setProduct, objective, setObjective, campaign, startCampaign, mode, soloResearch, soloPlan, setView }}
+                loading={isBusy("research") || isBusy("plan")}
               />
             )}
             {view === "research" && (
-              <Research {...{ campaign, decide, rerunResearch, loading, mode, soloResearch, product, setProduct, objective, setObjective }} />
+              <Research
+                {...{ campaign, decide, rerunResearch, mode, soloResearch, product, setProduct, objective, setObjective }}
+                loading={isBusy("research")}
+              />
             )}
             {view === "plan" && (
-              <Plan {...{ campaign, decide, runPlan, loading, mode, soloPlan, product, setProduct, objective, setObjective }} />
+              <Plan
+                {...{ campaign, decide, runPlan, mode, soloPlan, product, setProduct, objective, setObjective }}
+                loading={isBusy("plan")}
+              />
             )}
             {view === "creative" && (
               <CreativeStudio
-                {...{ product, setProduct, objective, setObjective, campaign, creative, placement, published, plan, doPublish, loading, refreshCost, mode }}
+                {...{ product, setProduct, objective, setObjective, campaign, creative, placement, published, plan, doPublish, refreshCost, mode, renderImages }}
                 genCreative={mode === "solo" ? soloCreative : genCreative}
+                loading={isBusy("creative")}
+                rendering={isBusy("render")}
+                placing={isBusy("placement")}
+                publishing={isBusy("publish")}
               />
             )}
             {view === "history" && <History onOpen={openCampaign} />}
@@ -720,16 +711,21 @@ function HelpDrawer({ open, onClose, mode }) {
             <HelpStep n="STEP 5" icon={CheckCircle} title="You approve the plan" you>
               Same deal: approve to continue, or reject with feedback.
             </HelpStep>
-            <HelpStep n="STEP 6" icon={Brush01} title="Agent 3 creates the ads">
-              It generates the ad images and copy for your chosen format (product shoot,
-              Amazon listing, Meta ads, or full bundle with a video storyboard). You can
-              upload a real product photo and add your own art direction.
+            <HelpStep n="STEP 6" icon={Brush01} title="Agent 3 drafts the ads (free)">
+              Paste the product URL: the system reads the page itself (name, claims,
+              price, photos), then writes the ad copy and a detailed description of every
+              image it plans to create. No image budget is spent at this step.
             </HelpStep>
-            <HelpStep n="STEP 7" icon={BarChart10} title="See where the ads go & what to expect">
+            <HelpStep n="STEP 7" icon={CheckCircle} title="You approve the image prompts" you>
+              Read the drafted image descriptions, edit any of them, then approve. Only
+              that click calls the paid image model and renders the actual ad images.
+              You can also upload a real product photo and add art direction.
+            </HelpStep>
+            <HelpStep n="STEP 8" icon={BarChart10} title="See where the ads go & what to expect">
               A placement plan maps each ad to a channel with a budget split, plus honest
               predicted results with confidence bars.
             </HelpStep>
-            <HelpStep n="STEP 8" icon={Rocket02} title="Approve & publish" you last>
+            <HelpStep n="STEP 9" icon={Rocket02} title="Approve & publish" you last>
               The final green button. The campaign is stamped PUBLISHED and lands in your
               History.
             </HelpStep>
@@ -751,6 +747,7 @@ function HelpDrawer({ open, onClose, mode }) {
           <Label>GOOD TO KNOW</Label>
           <ul style={{ margin: "10px 0 0", paddingLeft: 18 }}>
             {[
+              "Every running agent shows its own banner with a Cancel button; agents run independently, so one working never blocks another.",
               "The little blue tags (like campaign_history.md) show which document a claim came from. No source, no claim.",
               "The dark card in the menu shows the live cost of every AI call. Repeat image prompts are served from cache at $0.00.",
               "History keeps every past campaign; open one to resume exactly where it left off.",
@@ -1103,7 +1100,7 @@ const inputStyle = {
   boxSizing: "border-box",
 };
 
-function Banner({ tone, children }) {
+function Banner({ tone, children, onCancel }) {
   const map = {
     err: { bg: T.redSoft, fg: T.red },
     load: { bg: T.blueSoft, fg: T.blue },
@@ -1114,15 +1111,41 @@ function Banner({ tone, children }) {
         ...glass,
         background: map.bg,
         color: map.fg,
-        padding: "12px 18px",
+        padding: "10px 12px 10px 18px",
         borderRadius: 12,
-        marginBottom: 18,
+        marginBottom: 10,
         fontSize: 13.5,
         fontWeight: 600,
         fontFamily: T.mono,
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
       }}
     >
-      {children}
+      <span style={{ flex: 1, minWidth: 0 }}>{children}</span>
+      {onCancel && (
+        <button
+          onClick={onCancel}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 5,
+            flexShrink: 0,
+            border: `1.5px solid rgba(217,54,54,0.5)`,
+            background: "rgba(255,255,255,0.85)",
+            color: T.red,
+            fontFamily: T.sans,
+            fontWeight: 700,
+            fontSize: 12.5,
+            padding: "6px 13px",
+            borderRadius: 9,
+            cursor: "pointer",
+          }}
+        >
+          <XClose width={13} height={13} />
+          Cancel
+        </button>
+      )}
     </div>
   );
 }
@@ -1627,7 +1650,7 @@ function PlanBody({ p }) {
 }
 
 /* ================= 04 CREATIVE STUDIO (Agent 3) ================= */
-function CreativeStudio({ product, setProduct, objective, setObjective, campaign, creative, placement, published, genCreative, plan, doPublish, loading, refreshCost, mode }) {
+function CreativeStudio({ product, setProduct, objective, setObjective, campaign, creative, placement, published, genCreative, renderImages, plan, doPublish, loading, rendering, placing, publishing, refreshCost, mode }) {
   const [skill, setSkill] = useState("/amazon");
   const [url, setUrl] = useState(DEFAULT_URL[campaign?.product || product] || "");
   const [tweak, setTweak] = useState("");
@@ -1657,6 +1680,7 @@ function CreativeStudio({ product, setProduct, objective, setObjective, campaign
   };
 
   const p = creative?.profile;
+  const rendered = !!(creative?.rendered || (creative?.assets || []).length);
   return (
     <div>
       <PageTitle
@@ -1727,8 +1751,12 @@ function CreativeStudio({ product, setProduct, objective, setObjective, campaign
             style={{ flex: "1 1 300px", fontFamily: T.mono, fontSize: 12.5, color: T.soft, background: "rgba(255,255,255,0.8)", border: `1px solid ${T.line}`, borderRadius: 11, padding: "11px 15px" }}
           />
           <Btn onClick={() => genCreative(url, skill, ref?.reference_id, tweak)} disabled={!!loading}>
-            {loading ? "Generating…" : "Generate set"}
+            {loading ? "Drafting…" : "Draft prompts & copy"}
           </Btn>
+          <span style={{ fontSize: 11.5, color: T.faint, fontWeight: 500, flexBasis: "100%" }}>
+            Step 1 drafts image prompts and copy on the free tier. The paid image model
+            only runs after you approve the prompts below.
+          </span>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 220px", gap: 12, marginTop: 12 }}>
           <div>
@@ -1814,6 +1842,22 @@ function CreativeStudio({ product, setProduct, objective, setObjective, campaign
                   ))}
                   {creative.reference_used && <Pill color={T.blue} bg={T.blueSoft}>REFERENCE-FAITHFUL</Pill>}
                 </div>
+                {(p.source_images || []).length > 0 && (
+                  <div style={{ marginTop: 14 }}>
+                    <Label>PRODUCT IMAGES FETCHED FROM THE URL</Label>
+                    <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+                      {p.source_images.slice(0, 4).map((u) => (
+                        <a key={u} href={u} target="_blank" rel="noreferrer">
+                          <img
+                            src={u}
+                            alt="scraped from product page"
+                            style={{ width: 56, height: 56, borderRadius: 8, objectFit: "cover", border: `1px solid ${T.line}`, background: "#fff" }}
+                          />
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </Card>
               <Card>
                 <Pill color={T.red} bg={T.redSoft}>GUARDRAILS ACTIVE</Pill>
@@ -1827,11 +1871,22 @@ function CreativeStudio({ product, setProduct, objective, setObjective, campaign
             </div>
 
             <div>
-              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12 }}>
-                {creative.assets.map((a) => (
-                  <AssetTile key={a.id} a={a} onCost={refreshCost} />
-                ))}
-              </div>
+              {rendered ? (
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12 }}>
+                  {creative.assets.map((a) => (
+                    <AssetTile key={a.id} a={a} onCost={refreshCost} />
+                  ))}
+                </div>
+              ) : (
+                <Card style={{ background: T.amberSoft }}>
+                  <Pill color={T.amber} bg="rgba(255,255,255,0.7)">DRAFT STAGE · NO IMAGES RENDERED YET</Pill>
+                  <p style={{ fontSize: 13.5, color: T.body, lineHeight: 1.6, marginTop: 10, fontWeight: 500 }}>
+                    Agent 3 wrote the image prompts below with Gemini (free tier) and is
+                    waiting for your approval. Review or edit each prompt, then approve to
+                    call the paid image model. Nothing has been spent on images yet.
+                  </p>
+                </Card>
+              )}
               <Card style={{ marginTop: 12 }}>
                 <Label>COPY BLOCKS</Label>
                 <div style={{ display: "flex", gap: 24, flexWrap: "wrap", marginTop: 10 }}>
@@ -1848,14 +1903,20 @@ function CreativeStudio({ product, setProduct, objective, setObjective, campaign
             </div>
           </div>
 
+          {!rendered && (
+            <PromptApproval creative={creative} onRender={renderImages} rendering={rendering} />
+          )}
+
+          {rendered && (
+          <>
           <Card style={{ marginTop: 14, padding: 0, overflow: "hidden" }}>
             <div style={{ padding: "15px 22px", borderBottom: `1px solid ${T.line}`, display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
               <Label>PLACEMENT PLAN</Label>
               {placement ? (
                 <Label color={T.green}>PROJECTIONS FEED AGENT 1 NEXT CYCLE · LOOP CLOSED</Label>
               ) : (
-                <Btn small onClick={plan} disabled={!!loading}>
-                  {loading ? "Planning…" : "Run placement + expected metrics"}
+                <Btn small onClick={plan} disabled={!!placing}>
+                  {placing ? "Planning…" : "Run placement + expected metrics"}
                 </Btn>
               )}
             </div>
@@ -1929,15 +1990,77 @@ function CreativeStudio({ product, setProduct, objective, setObjective, campaign
                     {placement ? "Placements and expected metrics are on the table." : "Tip: run the placement pass first so you publish with expectations set."}
                   </p>
                 </div>
-                <Btn kind="approve" onClick={doPublish} disabled={!!loading}>
-                  Approve & publish →
+                <Btn kind="approve" onClick={doPublish} disabled={!!publishing}>
+                  {publishing ? "Publishing…" : "Approve & publish →"}
                 </Btn>
               </>
             )}
           </Card>
+          </>
+          )}
         </>
       )}
     </div>
+  );
+}
+
+/* the pre-spend human gate: drafted image prompts, editable, approve to render */
+function PromptApproval({ creative, onRender, rendering }) {
+  const [drafts, setDrafts] = useState(creative.prompts || []);
+  useEffect(() => {
+    setDrafts(creative.prompts || []);
+  }, [creative.creative_id]);
+  const total = drafts.reduce((a, d) => a + (d.est_cost_usd || 0), 0);
+  const setPrompt = (i, v) =>
+    setDrafts((ds) => ds.map((d, j) => (j === i ? { ...d, prompt: v } : d)));
+
+  if (!drafts.length)
+    return (
+      <Card style={{ marginTop: 14 }}>
+        <Label>IMAGE PROMPTS</Label>
+        <p style={{ fontSize: 13.5, color: T.soft, marginTop: 8 }}>
+          No drafted prompts on this creative. Run "Draft prompts & copy" first.
+        </p>
+      </Card>
+    );
+
+  return (
+    <Card style={{ marginTop: 14, background: "rgba(255,255,255,0.78)" }}>
+      <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+        <Label>HUMAN GATE · IMAGE PROMPTS AWAITING YOUR APPROVAL</Label>
+        <Pill color={T.green} bg={T.greenSoft}>$0.00 SPENT SO FAR</Pill>
+      </div>
+      <p style={{ fontSize: 13, color: T.soft, lineHeight: 1.6, margin: "10px 0 0", fontWeight: 500 }}>
+        Long-form prompts drafted by Gemini (free tier) from the brief and brand
+        guidelines. Edit any of them, then approve: only that click calls the paid
+        image model. Identical prompts are served from cache at $0.00.
+      </p>
+      {drafts.map((d, i) => (
+        <div key={i} style={{ marginTop: 14 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+            <Label color={T.blue}>
+              {i + 1}. {String(d.kind || "").replace(/_/g, " ").toUpperCase()} · {d.aspect}
+            </Label>
+            <span style={{ fontFamily: T.mono, fontSize: 11, color: T.faint }}>
+              est ${Number(d.est_cost_usd || 0).toFixed(3)}
+            </span>
+          </div>
+          <textarea
+            value={d.prompt}
+            onChange={(e) => setPrompt(i, e.target.value)}
+            style={{ ...inputStyle, fontFamily: T.mono, fontSize: 11.5, height: 116, resize: "vertical", lineHeight: 1.55, marginTop: 6 }}
+          />
+        </div>
+      ))}
+      <div style={{ display: "flex", gap: 14, alignItems: "center", marginTop: 18, flexWrap: "wrap" }}>
+        <Btn kind="approve" onClick={() => onRender(drafts)} disabled={!!rendering}>
+          {rendering ? "Rendering…" : `Approve prompts & render ${drafts.length} images (~$${total.toFixed(2)})`}
+        </Btn>
+        <span style={{ fontSize: 12, color: T.faint, fontWeight: 500 }}>
+          This is the only step that spends image budget.
+        </span>
+      </div>
+    </Card>
   );
 }
 

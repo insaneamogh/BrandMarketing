@@ -11,7 +11,7 @@ from config import (
 from models import Asset, SessionLocal, init_db
 from rag import ingest
 from schemas import (
-    CampaignInput, CreativeInput, PlacementInput, PublishInput,
+    CampaignInput, CreativeInput, PlacementInput, PublishInput, RenderInput,
     SoloCreativeInput, SoloPlanInput, SoloResearchInput,
     StageDecisionInput, VariantInput, VideoInput,
 )
@@ -142,10 +142,22 @@ async def solo_creative(inp: SoloCreativeInput):
 
 @app.post("/creative")
 async def creative(inp: CreativeInput):
-    """Agent 3: URL diagnosis -> copy + images (reference image + prompt tweak aware)."""
+    """Agent 3 DRAFT: URL diagnosis -> copy + long-form image prompts (free tier).
+    NO image spend happens here; the human approves prompts, then /creative/render."""
     try:
         return await orchestrator.run_creative(
             inp.campaign_id, inp.url, inp.skill, inp.reference_id, inp.prompt_tweak)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/creative/render")
+async def creative_render(inp: RenderInput):
+    """Agent 3 RENDER: the human approved (optionally edited) the drafted prompts.
+    This is the only endpoint that calls the paid image model."""
+    try:
+        edits = [p.model_dump() for p in inp.prompts] if inp.prompts else None
+        return await orchestrator.render_creative(inp.creative_id, edits)
     except ValueError as e:
         raise HTTPException(400, str(e))
 

@@ -16,9 +16,9 @@ def main() -> int:
     # [1] App + routes import cleanly
     import main as app_main
     routes = {r.path for r in app_main.app.routes}
-    assert {"/solo/research", "/solo/plan", "/solo/creative",
+    assert {"/solo/research", "/solo/plan", "/solo/creative", "/creative/render",
             "/campaigns", "/creative", "/placement", "/publish"} <= routes
-    print("[1] PASS  FastAPI app imports; chained + solo routes registered")
+    print("[1] PASS  FastAPI app imports; chained + solo + render routes registered")
 
     # [2] Researcher: campaign families cover every UI product
     from agents import researcher
@@ -123,6 +123,46 @@ def main() -> int:
     db.commit()
     db.close()
     print("[8] PASS  DB init + solo-campaign gate guard")
+
+    # [9] Two-step image flow, END TO END, fully offline: solo draft creates
+    #     prompts (template fallback, $0), render only then produces assets
+    #     (DEMO_MODE cache fallback, $0). The paid model is never required.
+    import asyncio
+    draft = asyncio.run(orchestrator.solo_creative(
+        "manual:verify product for the two-step flow test", "/meta",
+        product="Hill's Youthful Vitality", objective="verify"))
+    assert draft["rendered"] is False and draft["assets"] == []
+    assert len(draft["prompts"]) == 2, draft["prompts"]  # /meta = feed + story
+    assert all(len(p["prompt"]) > 80 for p in draft["prompts"])
+    edited = [{"kind": p["kind"], "prompt": p["prompt"] + " Edited by human."}
+              for p in draft["prompts"]]
+    out = asyncio.run(orchestrator.render_creative(draft["creative_id"], edited))
+    assert out["rendered"] is True and len(out["assets"]) == 2
+    assert all(p["prompt"].endswith("Edited by human.") for p in out["prompts"])
+    print("[9] PASS  draft (no spend) -> human edit -> render: "
+          f"{len(draft['prompts'])} prompts became {len(out['assets'])} assets")
+
+    # [10] Deterministic scraper parsers (offline: JSON-LD, images, fallback profile)
+    from url_diagnosis import _iter_ld_products, _ld_images, _profile_from_scrape
+    ld_doc = {"@graph": [{"@type": "WebPage"}, {
+        "@type": "Product", "name": "Science Diet Sensitive Stomach & Skin Variety Pack",
+        "brand": {"@type": "Brand", "name": "Hill's"},
+        "description": "Adult wet dog food. Highly digestible. Supports skin health.",
+        "image": [{"@type": "ImageObject", "url": "https://cdn.example.com/pack.jpg"}],
+        "offers": {"@type": "Offer", "price": "26.99", "priceCurrency": "USD"},
+    }]}
+    prods = list(_iter_ld_products(ld_doc))
+    assert len(prods) == 1 and prods[0]["name"].startswith("Science Diet")
+    assert _ld_images(prods[0]) == ["https://cdn.example.com/pack.jpg"]
+    prof = _profile_from_scrape(
+        "https://www.hillspet.com/dog-food/science-diet-adult-sensitive-stomach",
+        {"title": prods[0]["name"], "desc": prods[0]["description"],
+         "images": ["https://cdn.example.com/pack.jpg"], "h1": None})
+    assert prof.name.startswith("Science Diet")
+    assert prof.source_images == ["https://cdn.example.com/pack.jpg"]
+    assert len(prof.key_claims) >= 1
+    print("[10] PASS  scraper parsers: nested JSON-LD product, images, "
+          "deterministic profile fallback")
 
     print("\n=== ALL CHECKS PASS ===")
     return 0

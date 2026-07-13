@@ -105,6 +105,7 @@ class ProductProfile(BaseModel):
     pack_description: str
     brand_colors: List[str]
     price_tier: str
+    source_images: List[str] = Field(default_factory=list)  # scraped from the product URL
 
 
 class AssetOut(BaseModel):
@@ -118,6 +119,14 @@ class AssetOut(BaseModel):
     cost_usd: float = 0.0
 
 
+class ImagePromptSpec(BaseModel):
+    """One drafted image prompt awaiting human approval before any paid render."""
+    kind: str
+    aspect: str
+    prompt: str
+    est_cost_usd: float = 0.0
+
+
 class CreativeInput(BaseModel):
     campaign_id: int
     url: str
@@ -126,12 +135,25 @@ class CreativeInput(BaseModel):
     prompt_tweak: Optional[str] = None    # user art direction appended to image prompts
 
 
+class PromptEdit(BaseModel):
+    kind: str
+    prompt: str
+
+
+class RenderInput(BaseModel):
+    """Human-approved render: the ONLY call that spends image budget."""
+    creative_id: int
+    prompts: Optional[List[PromptEdit]] = None  # edited prompts; None = render drafts as-is
+
+
 class CreativeResponse(BaseModel):
     creative_id: int
     campaign_id: int
     profile: ProductProfile
-    assets: List[AssetOut]
+    assets: List[AssetOut] = Field(default_factory=list)
     copy_blocks: dict
+    prompts: List[ImagePromptSpec] = Field(default_factory=list)
+    rendered: bool = False   # False = drafts awaiting approval; True = images exist
     reference_used: bool = False
     prompt_tweak: Optional[str] = None
     cost_usd: float = 0.0

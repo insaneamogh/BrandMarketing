@@ -113,6 +113,7 @@ POST /campaigns/{id}/research   re-run Agent 1 (consumes rejection feedback)
 POST /campaigns/{id}/plan       hand approved research to Agent 2
 POST /campaigns/{id}/decision   {stage: research|plan, action: approve|reject, feedback?}
 POST /creative                  {campaign_id, url, skill, reference_id?, prompt_tweak?}
+POST /creative/render               {creative_id, prompts?} -> HUMAN-APPROVED render (the only image spend)
 POST /solo/research             {product, objective} -> Agent 1 standalone (no gates)
 POST /solo/plan                 {product?, objective?, campaign_id?} -> Agent 2 standalone
 POST /solo/creative             {url, skill, product?, objective?, campaign_id?, ...} -> just generate an ad

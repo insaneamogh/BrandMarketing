@@ -263,19 +263,22 @@ async def run_creative(campaign_id: int, url: str, skill: str,
 
 async def _generate_creative(db, c: Campaign, url: str, skill: str,
                              reference_id: str = None, prompt_tweak: str = None) -> dict:
-    """Shared Agent 3 body. Works with OR without a plan: with one, the approved
-    campaign angle is the brief; without (solo), the objective is the brief."""
+    """Shared Agent 3 DRAFT stage: deterministic URL scrape -> profile, copy
+    blocks, and LONG-FORM image prompts (all on the free tier). NO image model
+    is called here - the human approves the drafted prompts first, then
+    render_creative() spends the image budget.
+
+    Works with OR without a plan: with one, the approved campaign angle is the
+    brief; without (solo), the objective is the brief."""
     plan = PlanOutput.model_validate_json(c.plan_json) if c.plan_json else None
     plan_summary = plan.plan_summary if plan else (c.objective or "Standalone ad generation")
     campaign_angle = plan.campaign_angle if plan else ""
 
-    reference_png, reference_path = None, None
+    reference_path = None
     if reference_id:
         reference_path = str(REF_DIR / reference_id)
-        p = Path(reference_path)
-        if not p.exists():
+        if not Path(reference_path).exists():
             raise ValueError("reference image not found - upload it first")
-        reference_png = p.read_bytes()
 
     token = cost.current_campaign_id.set(c.id)
     try:
@@ -286,27 +289,76 @@ async def _generate_creative(db, c: Campaign, url: str, skill: str,
             creative_agent.generate_copy, profile, skill_def,
             plan_summary, campaign_angle)
 
+        prompts = await asyncio.to_thread(
+            creative_agent.draft_prompts, profile, skill_def,
+            plan_summary, campaign_angle, prompt_tweak or "")
+
         creative = Creative(
             campaign_id=c.id, url=url, skill=skill,
             reference_path=reference_path, prompt_tweak=prompt_tweak,
             profile_json=profile.model_dump_json(),
-            copy_json=json.dumps(copy_blocks))
+            copy_json=json.dumps(copy_blocks),
+            prompts_json=json.dumps(prompts))
         db.add(creative)
         db.commit()
         db.refresh(creative)
 
-        brand = _brand_key(profile)
-        asset_rows = await asyncio.to_thread(
-            creative_agent.generate_assets, profile, skill_def,
-            _cache_lookup, reference_png, prompt_tweak or "")
+        return CreativeResponse(
+            creative_id=creative.id, campaign_id=c.id, profile=profile,
+            assets=[], copy_blocks=copy_blocks, prompts=prompts, rendered=False,
+            reference_used=bool(reference_path), prompt_tweak=prompt_tweak,
+            cost_usd=_campaign_cost(db, c.id)).model_dump()
+    finally:
+        cost.current_campaign_id.reset(token)
 
+
+async def render_creative(creative_id: int, prompt_edits: list = None) -> dict:
+    """Stage 2: the human approved (and possibly edited) the drafted prompts.
+    This is the ONLY entry point that calls the paid image model."""
+    db = SessionLocal()
+    try:
+        creative = db.get(Creative, creative_id)
+        if not creative:
+            raise ValueError("creative not found")
+        c = creative.campaign
+        if (c.mode or "chain") != "solo" and c.status not in ("plan_approved", "published"):
+            raise ValueError(f"render requires an approved plan (campaign is {c.status})")
+        prompts = json.loads(creative.prompts_json or "[]")
+        if not prompts:
+            raise ValueError("no drafted prompts on this creative - run the draft step first")
+
+        # apply human edits positionally (kinds can repeat, e.g. two lifestyles)
+        if prompt_edits:
+            if len(prompt_edits) != len(prompts):
+                raise ValueError(
+                    f"expected {len(prompts)} prompts, got {len(prompt_edits)}")
+            for spec, edit in zip(prompts, prompt_edits):
+                text = (edit.get("prompt") or "").strip()
+                if text:
+                    spec["prompt"] = text
+        creative.prompts_json = json.dumps(prompts)
+
+        profile = ProductProfile.model_validate_json(creative.profile_json)
+        reference_png = None
+        if creative.reference_path and Path(creative.reference_path).exists():
+            reference_png = Path(creative.reference_path).read_bytes()
+
+        token = cost.current_campaign_id.set(creative.campaign_id)
+        try:
+            asset_rows = await asyncio.to_thread(
+                creative_agent.generate_assets_from_prompts,
+                prompts, _cache_lookup, reference_png)
+        finally:
+            cost.current_campaign_id.reset(token)
+
+        brand = _brand_key(profile)
         assets_out = []
         for a in asset_rows:
             rec = Asset(
-                creative_id=creative.id, campaign_id=c.id, brand=brand,
-                skill=skill, kind=a["kind"], prompt=a["prompt"],
-                prompt_hash=a["prompt_hash"], aspect=a["aspect"],
-                quality=a["quality"], path=a["path"],
+                creative_id=creative.id, campaign_id=creative.campaign_id,
+                brand=brand, skill=creative.skill, kind=a["kind"],
+                prompt=a["prompt"], prompt_hash=a["prompt_hash"],
+                aspect=a["aspect"], quality=a["quality"], path=a["path"],
                 from_cache=1 if a["from_cache"] else 0,
                 cache_hit=1 if a["cache_hit"] else 0,
                 origin=a["origin"], cost_usd=a["cost_usd"])
@@ -316,12 +368,15 @@ async def _generate_creative(db, c: Campaign, url: str, skill: str,
             assets_out.append(_asset_out(rec))
 
         return CreativeResponse(
-            creative_id=creative.id, campaign_id=c.id, profile=profile,
-            assets=assets_out, copy_blocks=copy_blocks,
-            reference_used=bool(reference_png), prompt_tweak=prompt_tweak,
-            cost_usd=_campaign_cost(db, c.id)).model_dump()
+            creative_id=creative.id, campaign_id=creative.campaign_id,
+            profile=profile, assets=assets_out,
+            copy_blocks=json.loads(creative.copy_json or "{}"),
+            prompts=prompts, rendered=True,
+            reference_used=bool(reference_png),
+            prompt_tweak=creative.prompt_tweak,
+            cost_usd=_campaign_cost(db, creative.campaign_id)).model_dump()
     finally:
-        cost.current_campaign_id.reset(token)
+        db.close()
 
 
 def _asset_out(rec: Asset) -> AssetOut:
@@ -510,6 +565,8 @@ def campaign_detail(campaign_id: int) -> dict:
                 "published_at": cr.published_at.isoformat() + "Z" if cr.published_at else None,
                 "profile": json.loads(cr.profile_json) if cr.profile_json else None,
                 "copy_blocks": json.loads(cr.copy_json) if cr.copy_json else {},
+                "prompts": json.loads(cr.prompts_json) if cr.prompts_json else [],
+                "rendered": bool(cr.assets),
                 "placement": placement,
                 "video": json.loads(cr.video_json) if cr.video_json else None,
                 "assets": [_asset_out(a).model_dump() for a in cr.assets],

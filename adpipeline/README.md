@@ -153,7 +153,7 @@ Open http://localhost:5173. `GET /health` shows which providers are live.
 
 ```bash
 cd backend
-DATA_DIR=/tmp/adp-verify python verify_setup.py   # 8 checks, all must PASS
+DATA_DIR=/tmp/adp-verify python verify_setup.py   # 10 checks, all must PASS
 cd ../frontend && npm run build                   # must compile cleanly
 ```
 
@@ -248,6 +248,7 @@ POST /campaigns/{id}/research         re-run Agent 1 (consumes rejection feedbac
 POST /campaigns/{id}/plan             hand approved research to Agent 2
 POST /campaigns/{id}/decision         {stage: research|plan, action: approve|reject, feedback?}
 POST /creative                        {campaign_id, url, skill, reference_id?, prompt_tweak?}
+POST /creative/render                 {creative_id, prompts?} -> HUMAN-APPROVED render (the only image spend)
 POST /solo/research                   {product, objective} -> Agent 1 standalone (no gates)
 POST /solo/plan                       {product?, objective?, campaign_id?} -> Agent 2 standalone
 POST /solo/creative                   {url, skill, product?, objective?, campaign_id?, reference_id?, prompt_tweak?}

@@ -77,6 +77,7 @@ class Creative(Base):
     reference_path = Column(String)               # uploaded reference image (optional)
     prompt_tweak = Column(Text)                   # user art direction appended to prompts
     profile_json = Column(Text)                   # ProductProfile
+    prompts_json = Column(Text)                   # drafted image prompts awaiting approval
     copy_json = Column(Text)                      # copy blocks
     placement_json = Column(Text)                 # placement plan + expected metrics
     video_json = Column(Text)                     # Seedance video result / prompt
@@ -133,6 +134,12 @@ def init_db():
             if cols and "mode" not in cols:
                 conn.exec_driver_sql(
                     "ALTER TABLE campaigns ADD COLUMN mode VARCHAR DEFAULT 'chain'")
+                conn.commit()
+            ccols = [row[1] for row in
+                     conn.exec_driver_sql("PRAGMA table_info(creatives)")]
+            if ccols and "prompts_json" not in ccols:
+                conn.exec_driver_sql(
+                    "ALTER TABLE creatives ADD COLUMN prompts_json TEXT")
                 conn.commit()
     except Exception:
         pass  # non-SQLite backends: manage the column with a real migration
