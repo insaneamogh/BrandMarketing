@@ -1,7 +1,7 @@
 """FastAPI app: routes for the staged 3-agent handoff pipeline."""
 import json
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -238,6 +238,19 @@ def get_video(creative_id: int):
         return FileResponse(orchestrator.video_path(creative_id), media_type="video/mp4")
     except ValueError as e:
         raise HTTPException(404, str(e))
+
+
+@app.post("/video/upload")
+async def upload_video(creative_id: int = Form(...), file: UploadFile = File(...),
+                       prompt: str | None = Form(None), cost_usd: float = Form(0.0)):
+    """Attach an already-made video (e.g. rendered by hand elsewhere) to a
+    creative. Written in the same on-disk path and JSON shape as a real
+    Seedance render, so it plays and displays identically - no 'uploaded' tag."""
+    try:
+        data = await file.read()
+        return orchestrator.upload_video(creative_id, data, prompt, cost_usd)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
 
 # ---------------- reference images ----------------

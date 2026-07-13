@@ -591,6 +591,41 @@ async def run_video(creative_id: int) -> dict:
         db.close()
 
 
+def upload_video(creative_id: int, mp4: bytes, prompt: str = None,
+                 cost_usd: float = 0.0) -> dict:
+    """Attach an already-made video file to a creative - e.g. one rendered by
+    hand via Seedance/another tool outside this app run. Writes the file to
+    the SAME path and the SAME video_json shape run_video() produces, so it
+    plays and displays identically in the UI (no 'uploaded' marker, and a
+    later click on 'Render video' just hits this as a normal cache result).
+    Only the video's own cost_usd is stored on the record - no synthetic
+    LLMCall row is logged, so the live spend ledger stays accurate to what
+    this app itself actually paid for.
+    """
+    if not mp4:
+        raise ValueError("empty upload")
+    db = SessionLocal()
+    try:
+        creative = db.get(Creative, creative_id)
+        if not creative:
+            raise ValueError("creative not found")
+        if not prompt:
+            copy = json.loads(creative.copy_json or "{}")
+            prompt = copy.get("veo_prompt") or copy.get("video_prompt")
+            if isinstance(prompt, list):
+                prompt = " ".join(str(p) for p in prompt)
+        path = ASSETS_DIR / f"video_{creative_id}.mp4"
+        path.write_bytes(mp4)
+        result = {"status": "done", "url": f"/videos/{creative_id}",
+                  "prompt": prompt or "Uploaded video.",
+                  "cost_usd": round(max(0.0, cost_usd), 3)}
+        creative.video_json = json.dumps(result)
+        db.commit()
+        return result
+    finally:
+        db.close()
+
+
 def video_path(creative_id: int) -> str:
     db = SessionLocal()
     try:

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 // Untitled UI icons (https://www.untitledui.com/free-icons) via the official
 // @untitled-ui/icons-react package - 24px line icons, stroke inherits currentColor.
 import {
@@ -2309,10 +2309,29 @@ function AssetTile({ a: initial, onCost }) {
 function VideoPanel({ creative }) {
   const [video, setVideo] = useState(null);
   const [busy, setBusy] = useState(false);
+  const fileRef = useRef(null);
   const render = async () => {
     setBusy(true);
     try {
       setVideo(await api("/video", { method: "POST", body: JSON.stringify({ creative_id: creative.creative_id }) }));
+    } catch (e) {
+      setVideo({ status: "error", error: String(e.message || e) });
+    } finally {
+      setBusy(false);
+    }
+  };
+  const onUpload = async (e) => {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    setBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append("creative_id", creative.creative_id);
+      fd.append("file", f);
+      const r = await fetch("/video/upload", { method: "POST", body: fd });
+      if (!r.ok) throw new Error((await r.text()) || r.statusText);
+      setVideo(await r.json());
     } catch (e) {
       setVideo({ status: "error", error: String(e.message || e) });
     } finally {
@@ -2330,9 +2349,15 @@ function VideoPanel({ creative }) {
           </p>
         </div>
         {(!video || video.status === "error") && (
-          <Btn small onClick={render} disabled={busy}>
-            {busy ? "Rendering… (~1 min)" : "Render video via Seedance"}
-          </Btn>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <Btn small onClick={render} disabled={busy}>
+              {busy ? "Working…" : "Render video via Seedance"}
+            </Btn>
+            <Btn kind="ghost" small onClick={() => fileRef.current?.click()} disabled={busy}>
+              Upload a video file
+            </Btn>
+            <input ref={fileRef} type="file" accept="video/mp4" onChange={onUpload} style={{ display: "none" }} />
+          </div>
         )}
       </div>
 
