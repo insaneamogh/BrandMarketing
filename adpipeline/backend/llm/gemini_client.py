@@ -1,4 +1,4 @@
-"""Gemini wrapper — the FREE-tier workhorse.
+"""Gemini wrapper - the FREE-tier workhorse.
 
 Handles: JSON-mode chat, vision (URL diagnosis), embeddings, image gen
 (gemini-2.5-flash-image "nano banana"), and google_search grounding.
@@ -149,7 +149,7 @@ def generate_image(prompt: str, aspect: str = "1:1", quality: str = "medium",
         contents = [
             types.Part.from_bytes(data=reference_png, mime_type="image/png"),
             types.Part.from_text(
-                text=f"Use the attached image as the product reference — keep the "
+                text=f"Use the attached image as the product reference - keep the "
                      f"product, pack and branding faithful to it. {text}"),
         ]
     else:
@@ -167,7 +167,7 @@ def generate_image(prompt: str, aspect: str = "1:1", quality: str = "medium",
 def search_enrich(query: str, task: str = "gemini_search") -> str:
     """Grounded text answer using google_search. Returns text; '' on failure.
 
-    Runs on MODEL_GEMINI_SEARCH (gemini-2.5-flash) — the one task NOT on the
+    Runs on MODEL_GEMINI_SEARCH (gemini-2.5-flash) - the one task NOT on the
     default text model, because search grounding is tied to this model tier.
     """
     from google.genai import types

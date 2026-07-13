@@ -9,7 +9,7 @@ Prompt templates may use {name} {category} {pack_description} {brand_colors}
 Prompt style guide (applies to every template below):
 - One subject, one story per frame; say what the camera sees, not marketing talk.
 - Name the light (softbox, golden hour, high-key daylight) and the lens feel
-  (macro, 85mm product lens, wide editorial) — models compose better with both.
+  (macro, 85mm product lens, wide editorial) - models compose better with both.
 - The pack description is the ground truth for the product's appearance; never
   contradict it. Brand palette drives the scene accents, not random color.
 - Default to NO baked-in text; overlay copy is added by the platform, and
@@ -18,7 +18,7 @@ Prompt style guide (applies to every template below):
 
 _BASE_STYLE = (
     "Photorealistic commercial product photography of {name} ({category}). "
-    "The exact pack, ground truth — render it faithfully: {pack_description}. "
+    "The exact pack, ground truth - render it faithfully: {pack_description}. "
     "Scene accent palette drawn from the brand colors: {brand_colors}. "
     "Crisp focus on the pack, premium {price_tier}-tier art direction, true-to-life "
     "color, no film grain. ABSOLUTELY NO text, letters, logos, watermarks or UI "
@@ -39,7 +39,7 @@ SKILLS = {
             {"kind": "texture_macro", "aspect": "1:1", "n": 1,
              "prompt_template": _BASE_STYLE + (
                  " Extreme macro detail shot of the product's texture or key ingredient "
-                 "(the substance itself — kibble, cream swirl, gel, oil droplets — "
+                 "(the substance itself - kibble, cream swirl, gel, oil droplets - "
                  "whichever matches the category), 100mm macro lens, razor-thin depth of "
                  "field, glistening specular highlights, backlit rim light, the pack "
                  "softly blurred in the background for context.")},
@@ -72,8 +72,8 @@ SKILLS = {
              "prompt_template": (
                  "Amazon listing MAIN image of {name} ({category}), strict marketplace "
                  "compliance: PURE WHITE #FFFFFF seamless background with zero shadows on "
-                 "the backdrop, the physical product only — render the pack faithfully: "
-                 "{pack_description} — filling 85% of the frame, perfectly centered and "
+                 "the backdrop, the physical product only - render the pack faithfully: "
+                 "{pack_description} - filling 85% of the frame, perfectly centered and "
                  "front-facing, bright even studio lighting, tack-sharp label. "
                  "ABSOLUTELY NO added text, badges, borders, props, reflections, "
                  "graphics or watermarks (Amazon main-image policy). Brand colors appear "
@@ -88,7 +88,7 @@ SKILLS = {
              "prompt_template": _BASE_STYLE + (
                  " Amazon secondary image, second context: a different moment of the "
                  "routine (morning vs evening, indoors vs outdoors) with human or pet "
-                 "warmth and genuine emotion, distinct from the first lifestyle frame — "
+                 "warmth and genuine emotion, distinct from the first lifestyle frame - "
                  "different setting, palette temperature and camera angle.")},
             {"kind": "infographic", "aspect": "1:1", "n": 1,
              "prompt_template": (
@@ -97,7 +97,7 @@ SKILLS = {
                  "EMPTY rounded icon zones with simple pictogram-style illustrations "
                  "hinting at these benefits: {key_claims}. Brand palette {brand_colors}, "
                  "flat modern e-commerce design, generous whitespace. NO words, letters "
-                 "or numbers anywhere — icon shapes only (text is overlaid later).")},
+                 "or numbers anywhere - icon shapes only (text is overlaid later).")},
         ],
         "copy_blocks": ["title", "five_bullets", "a_plus_hero", "a_plus_comparison"],
         "platform_rules": [
@@ -124,7 +124,7 @@ SKILLS = {
                  "motion energy (pour, splash, mid-action moment frozen), product "
                  "clearly identifiable in the lower two-thirds, top 20% and bottom 15% "
                  "kept visually quiet for platform UI and overlay text. Shot feels "
-                 "native to stories — candid, vivid, slightly wide lens.")},
+                 "native to stories - candid, vivid, slightly wide lens.")},
         ],
         "copy_blocks": ["primary_text", "headline", "hook_overlays"],
         "platform_rules": [
@@ -135,7 +135,7 @@ SKILLS = {
     },
     "/bundle": {
         "command": "/bundle",
-        "description": "Everything above + a 6-frame VIDEO STORYBOARD (stills + shot notes + video prompt). Video renders only on an explicit Seedance call — never inside this skill.",
+        "description": "Everything above + a 6-frame VIDEO STORYBOARD (stills + shot notes + video prompt). Video renders only on an explicit Seedance call - never inside this skill.",
         "image_specs": [
             {"kind": "packshot", "aspect": "1:1", "n": 1,
              "prompt_template": _BASE_STYLE + (
@@ -161,7 +161,7 @@ SKILLS = {
             "orbit, tilt-up). Name the mood and color grade. No cuts, no scene changes.",
             "veo_prompt: NO on-screen text, captions or logos beyond the pack label; "
             "the product must be clearly visible by second 3.",
-            "Do NOT call any video API from this skill — storyboard + prompt only (cost control).",
+            "Do NOT call any video API from this skill - storyboard + prompt only (cost control).",
         ],
     },
 }

@@ -8,7 +8,7 @@ Campaign lifecycle (one row per campaign, statuses gate the handoffs):
     published         -> human clicked Approve & Publish on a creative
 
 NOTE: this schema replaced the old Run/Brief flow. If you have an old local
-DATA_DIR, delete it (adpipeline/data/) — the POC ships no migrations.
+DATA_DIR, delete it (adpipeline/data/) - the POC ships no migrations.
 """
 import datetime as dt
 
@@ -46,7 +46,7 @@ class Campaign(Base):
 
 
 class StageDecision(Base):
-    """Every human approve/reject at a gate — the audit trail of the handoffs."""
+    """Every human approve/reject at a gate - the audit trail of the handoffs."""
     __tablename__ = "stage_decisions"
     id = Column(Integer, primary_key=True)
     campaign_id = Column(Integer, ForeignKey("campaigns.id"))
@@ -96,7 +96,7 @@ class Asset(Base):
     skill = Column(String)                        # /amazon /meta ... (for library filters)
     kind = Column(String)                         # packshot|lifestyle|infographic|...
     prompt = Column(Text)
-    prompt_hash = Column(String, index=True)      # sha256(prompt|aspect|quality|ref) — cache key
+    prompt_hash = Column(String, index=True)      # sha256(prompt|aspect|quality|ref) - cache key
     aspect = Column(String)
     quality = Column(String)                      # low|medium|high
     path = Column(String)                         # file path under ASSETS_DIR or cache/

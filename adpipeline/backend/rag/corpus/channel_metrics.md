@@ -1,6 +1,6 @@
-# Channel Metrics — CPL / CVR by Channel & Region (MOCK)
+# Channel Metrics: CPL / CVR by Channel & Region (MOCK)
 
-Provenance: MOCK — illustrative internal demo figures, not audited results. They are
+Provenance: MOCK - illustrative internal demo figures, not audited results. They are
 deliberately kept in a realistic range; sanity-check them against the REAL public
 figures in industry_ad_benchmarks.md. Use them to reason about where to place spend
 and to project campaign efficiency.
@@ -34,21 +34,21 @@ and to project campaign efficiency.
 
 ## Reading of the table
 - Vet referral has by far the highest CVR (~4x paid social) but the highest CPL and
-  is capacity-constrained — great for Prescription Diet, not scalable for reach.
+  is capacity-constrained - great for Prescription Diet, not scalable for reach.
 - India Meta CPL ($3.10) is ~2.7x cheaper than NA Meta CPL ($8.40): efficient reach.
-- Amazon CVR (2.1% NA) beats category average (1.4%) — Amazon is an efficient
+- Amazon CVR (2.1% NA) beats category average (1.4%) - Amazon is an efficient
   conversion channel for Hill's Science Diet.
-- Quick-commerce in India combines low CPL ($2.40) and strong CVR (4.6%) — the
+- Quick-commerce in India combines low CPL ($2.40) and strong CVR (4.6%) - the
   standout efficiency play for Palmolive Luminous Oils in India metros.
 - Derm-office referral (CPL $16.50, CVR 10.5%) behaves like vet referral: high
-  cost, very high conversion, capacity-constrained — the natural home for EltaMD
+  cost, very high conversion, capacity-constrained - the natural home for EltaMD
   UV Clear, mirroring Prescription Diet's vet motion.
-- TikTok (CPL $5.20, CVR 2.4%) is the discovery flank for skincare — efficient
+- TikTok (CPL $5.20, CVR 2.4%) is the discovery flank for skincare - efficient
   reach for EltaMD creator content, weaker for considered therapeutic purchases.
 
 ## Definitions (how these reconcile with public benchmarks)
 - A "lead" here is a light action (add-to-cart, email/quiz signup), which is why
-  internal CPLs ($2.40–$14.00) sit below the public Meta lead-ads median CPL of
-  $27.66 (see industry_ad_benchmarks.md) — compare trends, not absolute levels.
+  internal CPLs ($2.40-$14.00) sit below the public Meta lead-ads median CPL of
+  $27.66 (see industry_ad_benchmarks.md) - compare trends, not absolute levels.
 - CVR here is click-to-purchase on paid (mostly cold) traffic; public platform-wide
-  Amazon CVR (10–12%) includes branded, high-intent search, so it runs higher.
+  Amazon CVR (10-12%) includes branded, high-intent search, so it runs higher.

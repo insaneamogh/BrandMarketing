@@ -149,8 +149,8 @@ class Placement(BaseModel):
 
 class ExpectedMetric(BaseModel):
     metric: str              # e.g. CTR, CPL, CVR, ROAS
-    expected: str            # e.g. "$3.10 CPL" — grounded in context
-    probability: float       # 0.0–1.0 confidence the expectation is met
+    expected: str            # e.g. "$3.10 CPL" - grounded in context
+    probability: float       # 0.0-1.0 confidence the expectation is met
     rationale: str
     sources: List[str] = Field(default_factory=list)
 

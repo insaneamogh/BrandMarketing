@@ -35,13 +35,13 @@ _FALLBACKS = {
                     "Formulated with veterinarians and nutritionists",
                     "Supports appetite and vitality in pets with kidney conditions"],
         pack_description="White clinical bag with Hill's red-orange band, 'Prescription Diet k/d' "
-                         "lettering and a small dog photo — pharmaceutical, vet-office look",
+                         "lettering and a small dog photo - pharmaceutical, vet-office look",
         brand_colors=["#FFFFFF", "#E4002B", "#1C3B6E"],
         price_tier="prestige",
     ),
     "palmolive": ProductProfile(
         name="Palmolive Luminous Oils",
-        category="Personal care — shower gel / body wash",
+        category="Personal care - shower gel / body wash",
         key_claims=["Infused with natural oils", "Indulgent fragrance",
                     "Leaves skin feeling soft and glowing"],
         pack_description="Amber/gold bottle with Palmolive green heritage cue and oil-drop visual",
@@ -55,7 +55,7 @@ _FALLBACKS = {
                     "Oil-free, calms and protects sensitive and acne-prone skin",
                     "Niacinamide supports a clear, even-looking complexion"],
         pack_description="Minimal white cylindrical pump bottle with clean black EltaMD "
-                         "wordmark and thin teal 'UV Clear' accent band — clinical, derm-office aesthetic",
+                         "wordmark and thin teal 'UV Clear' accent band - clinical, derm-office aesthetic",
         brand_colors=["#FFFFFF", "#000000", "#2AA8A0"],
         price_tier="prestige",
     ),
@@ -66,7 +66,7 @@ _FALLBACKS = {
                     "Visibly smooths wrinkles and improves firmness",
                     "Restores radiance and skin quality"],
         pack_description="Luxurious glass jar with matte white body, glossy black lid and "
-                         "gold NCEF-REVERSE lettering — French-pharmacy prestige look",
+                         "gold NCEF-REVERSE lettering - French-pharmacy prestige look",
         brand_colors=["#FFFFFF", "#000000", "#C9A24B"],
         price_tier="prestige",
     ),
@@ -157,7 +157,7 @@ def _vision_profile(page_text: str, image_urls: list) -> ProductProfile:
         "You are the CREATIVE agent's product analyst in a CPG marketing pipeline. "
         "From scraped page data and product images, extract a faithful, structured "
         "ProductProfile that downstream image prompts will be built from. Describe "
-        "only what the page/images actually show — never invent claims the brand "
+        "only what the page/images actually show - never invent claims the brand "
         "does not make. Return a single JSON object only."
     )
     user = (

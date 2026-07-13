@@ -1,9 +1,9 @@
-"""Agent 3 — Creative. Executes the approved plan: copy + images (+ optional
+"""Agent 3 - Creative. Executes the approved plan: copy + images (+ optional
 video via orchestrator), then placement + expected metrics, then publish.
 
 - Copy blocks: gemini-2.5-flash-lite (free), grounded in the approved plan +
   retrieved brand guidelines (respects BANNED CLAIMS).
-- Images: gpt-image-1 (the $10 budget) via the router — or Gemini free-tier
+- Images: gpt-image-1 (the $10 budget) via the router - or Gemini free-tier
   images with IMAGE_PROVIDER=gemini. Supports a user-uploaded REFERENCE IMAGE
   (faithful product rendering) and a user PROMPT TWEAK (art direction appended
   to every image prompt). Gated by MAX_IMAGE_CALLS_PER_RUN; on any failure or
@@ -42,10 +42,10 @@ _CACHE_MAP = {
 }
 
 COPY_SYSTEM = (
-    "You are AGENT 3 — CREATIVE (copywriter) in a 3-agent CPG marketing pipeline "
+    "You are AGENT 3 - CREATIVE (copywriter) in a 3-agent CPG marketing pipeline "
     "(1 research -> human gate -> 2 strategy plan -> human gate -> 3 creative -> "
     "publish). You execute the HUMAN-APPROVED plan: the campaign angle is your "
-    "creative direction, not a suggestion — every block must ladder up to it.\n\n"
+    "creative direction, not a suggestion - every block must ladder up to it.\n\n"
     + GROUNDING_RULE + "\n\n"
     "COPY RULES:\n"
     "- NEVER produce any BANNED CLAIM listed in the brand-guidelines context, "
@@ -53,7 +53,7 @@ COPY_SYSTEM = (
     "substantiated for one specific product, use it only for that product and "
     "only verbatim.\n"
     "- Match the brand tone described in the guidelines; lead with benefits that "
-    "appear in the product profile's key_claims — every benefit you write must "
+    "appear in the product profile's key_claims - every benefit you write must "
     "trace to a key_claim or an approved angle in the guidelines.\n"
     "- Obey the PLATFORM RULES exactly (character limits, overlay word counts, "
     "no-text rules). Count characters before you answer.\n"
@@ -62,7 +62,7 @@ COPY_SYSTEM = (
     "per line; the first three words carry the benefit.\n"
     "- storyboard_6_frames (when requested): each frame = shot type + subject + "
     "action in under 20 words, building to a product-hero final frame.\n"
-    "- veo_prompt (when requested): ONE continuous 5-second shot — subject, "
+    "- veo_prompt (when requested): ONE continuous 5-second shot - subject, "
     "action, setting, lighting, camera move, mood/grade, in that order; no "
     "cuts, no on-screen text, product clearly visible by second 3.\n"
     "- Produce every requested copy-block key; values are strings or arrays of "
@@ -70,7 +70,7 @@ COPY_SYSTEM = (
 )
 
 PLACEMENT_SYSTEM = (
-    "You are AGENT 3 — CREATIVE (media planner) in a 3-agent CPG marketing "
+    "You are AGENT 3 - CREATIVE (media planner) in a 3-agent CPG marketing "
     "pipeline. The human is about to click Approve & Publish: you map each "
     "asset to where the channel economics say it will work hardest, and you set "
     "honest expectations for what happens after publish.\n\n"
@@ -85,7 +85,7 @@ PLACEMENT_SYSTEM = (
     "- 3-5 `expected_metrics` rows (CTR, CPL, CVR, ROAS...), each anchored to a "
     "VERBATIM context figure in `expected`.\n"
     "- `probability` is your calibrated 0.00-1.00 confidence the expectation is "
-    "met in the first 4 weeks. Be honest: benchmarks transfer imperfectly — "
+    "met in the first 4 weeks. Be honest: benchmarks transfer imperfectly - "
     "cap at 0.85 unless the context shows the exact channel+region+product "
     "combination; go below 0.5 when extrapolating across regions or categories.\n"
     "- `rationale` says in one sentence WHY that probability (data proximity, "
@@ -117,14 +117,14 @@ def generate_copy(profile: ProductProfile, skill: dict, plan_summary: str,
         )
     else:
         brief = (
-            "STANDALONE MODE — NO APPROVED PLAN: this is a solo run. Derive the "
+            "STANDALONE MODE - NO APPROVED PLAN: this is a solo run. Derive the "
             "creative direction yourself from the product profile and the brand "
             f"guidelines below.\nOBJECTIVE / BRIEF: {plan_summary}\n"
         )
     user = (
         f"PRODUCT PROFILE: {profile.model_dump_json()}\n"
         f"{brief}"
-        f"SKILL: {skill['command']} — {skill['description']}\n"
+        f"SKILL: {skill['command']} - {skill['description']}\n"
         f"PLATFORM RULES: {skill['platform_rules']}\n"
         f"## BRAND GUIDELINES\n{ctx}\n\n"
         f"Produce these copy blocks as JSON keys: {skill['copy_blocks']}.\n"
@@ -156,7 +156,7 @@ def render_one(prompt: str, aspect: str, kind: str, calls: int,
     base = {"kind": kind, "prompt": prompt, "aspect": aspect,
             "quality": quality, "prompt_hash": h}
 
-    # 1) prompt-hash cache hit — never pay twice for the same prompt
+    # 1) prompt-hash cache hit - never pay twice for the same prompt
     if cache_lookup:
         hit = cache_lookup(h)
         if hit and Path(hit).exists():

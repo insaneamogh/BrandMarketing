@@ -69,7 +69,7 @@ async def create_campaign(inp: CampaignInput):
 
 @app.get("/campaigns")
 def list_campaigns():
-    """History — everything previously generated, newest first."""
+    """History - everything previously generated, newest first."""
     return orchestrator.campaign_history()
 
 
@@ -111,7 +111,7 @@ def decide(campaign_id: int, inp: StageDecisionInput):
 # ---------------- solo mode (standalone agents, no gates) ----------------
 @app.post("/solo/research")
 async def solo_research(inp: SoloResearchInput):
-    """Agent 1 standalone — research a product/objective with no handoff chain."""
+    """Agent 1 standalone - research a product/objective with no handoff chain."""
     try:
         return await orchestrator.solo_research(inp.product, inp.objective)
     except ValueError as e:
@@ -120,7 +120,7 @@ async def solo_research(inp: SoloResearchInput):
 
 @app.post("/solo/plan")
 async def solo_plan(inp: SoloPlanInput):
-    """Agent 2 standalone — plan directly from the knowledge base. Optionally pass
+    """Agent 2 standalone - plan directly from the knowledge base. Optionally pass
     campaign_id of a prior solo run to reuse its research as context."""
     try:
         return await orchestrator.solo_plan(inp.product, inp.objective, inp.campaign_id)
@@ -130,7 +130,7 @@ async def solo_plan(inp: SoloPlanInput):
 
 @app.post("/solo/creative")
 async def solo_creative(inp: SoloCreativeInput):
-    """Agent 3 standalone — 'just generate an ad': URL + skill, no approved plan
+    """Agent 3 standalone - 'just generate an ad': URL + skill, no approved plan
     required. Optionally continue a prior solo campaign via campaign_id."""
     try:
         return await orchestrator.solo_creative(

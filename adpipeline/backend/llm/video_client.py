@@ -1,8 +1,8 @@
-"""Seedance (BytePlus ModelArk) text-to-video — OPTIONAL, explicitly triggered.
+"""Seedance (BytePlus ModelArk) text-to-video - OPTIONAL, explicitly triggered.
 
 Async task API: create task -> poll -> download mp4. Only ever called when
 SEEDANCE_API_KEY is set AND the user clicks "Generate video" on a /bundle
-creative — never automatically inside a skill run (cost control). One video
+creative - never automatically inside a skill run (cost control). One video
 per creative (MAX_VIDEO_CALLS_PER_CREATIVE) and a fixed 5s/720p spec keep the
 worst case around SEEDANCE_COST_PER_VIDEO.
 """

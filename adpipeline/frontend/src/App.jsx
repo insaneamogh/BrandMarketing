@@ -1,7 +1,14 @@
 import { useEffect, useState } from "react";
+// Untitled UI icons (https://www.untitledui.com/free-icons) via the official
+// @untitled-ui/icons-react package - 24px line icons, stroke inherits currentColor.
+import {
+  BarChart10, Brush01, Check, CheckCircle, ClockRewind, Compass03, Diamond01,
+  Edit02, HelpCircle, LayersTwo01, Link01, Menu01, RefreshCcw01, Rocket02,
+  SearchLg, Target04, Upload01, XClose,
+} from "@untitled-ui/icons-react";
 
 // ============================================================
-// AdPipeline — staged 3-agent handoff edition.
+// AdPipeline - staged 3-agent handoff edition.
 // Agent 1 Research → human gate → Agent 2 Plan → human gate →
 // Agent 3 Creative (reference image, prompt tweaks, expected
 // metrics with probability, Approve & Publish).
@@ -62,7 +69,7 @@ const PRODUCTS = [
   "Filorga NCEF-Reverse",
 ];
 const SKILLS = [
-  { cmd: "/product-shoot", d: "4 hero images — packshot, macro, lifestyle, flat-lay" },
+  { cmd: "/product-shoot", d: "4 hero images: packshot, macro, lifestyle, flat-lay" },
   { cmd: "/amazon", d: "Listing-compliant set + A+ content blocks" },
   { cmd: "/meta", d: "4:5 feed + 9:16 story with hook overlays" },
   { cmd: "/bundle", d: "All sets + storyboard + Seedance video prompt" },
@@ -192,7 +199,7 @@ export default function App() {
 
   const soloResearch = async () => {
     setError("");
-    setLoading("Agent 1 (solo) — researching standalone…");
+    setLoading("Agent 1 (solo): researching standalone…");
     try {
       const res = await api("/solo/research", {
         method: "POST",
@@ -213,7 +220,7 @@ export default function App() {
 
   const soloPlan = async () => {
     setError("");
-    setLoading("Agent 2 (solo) — planning straight from the knowledge base…");
+    setLoading("Agent 2 (solo): planning straight from the knowledge base…");
     try {
       const reuse = soloReuseId();
       const res = await api("/solo/plan", {
@@ -232,7 +239,7 @@ export default function App() {
 
   const soloCreative = async (url, skill, referenceId, promptTweak) => {
     setError("");
-    setLoading("Agent 3 (solo) — diagnosing URL + generating assets…");
+    setLoading("Agent 3 (solo): diagnosing URL + generating assets…");
     try {
       const res = await api("/solo/creative", {
         method: "POST",
@@ -265,7 +272,7 @@ export default function App() {
 
   const startCampaign = async () => {
     setError("");
-    setLoading("Agent 1 — researching what's wrong…");
+    setLoading("Agent 1: researching what's wrong…");
     try {
       const res = await api("/campaigns", {
         method: "POST",
@@ -286,7 +293,7 @@ export default function App() {
 
   const rerunResearch = async () => {
     setError("");
-    setLoading("Agent 1 — re-running with your feedback…");
+    setLoading("Agent 1: re-running with your feedback…");
     try {
       const res = await api(`/campaigns/${campaign.id}/research`, { method: "POST" });
       setCampaign(res);
@@ -300,7 +307,7 @@ export default function App() {
 
   const runPlan = async () => {
     setError("");
-    setLoading("Agent 2 — building the plan from approved research…");
+    setLoading("Agent 2: building the plan from approved research…");
     try {
       const res = await api(`/campaigns/${campaign.id}/plan`, { method: "POST" });
       setCampaign(res);
@@ -330,7 +337,7 @@ export default function App() {
 
   const genCreative = async (url, skill, referenceId, promptTweak) => {
     setError("");
-    setLoading("Agent 3 — diagnosing URL + generating assets…");
+    setLoading("Agent 3: diagnosing URL + generating assets…");
     try {
       const res = await api("/creative", {
         method: "POST",
@@ -355,7 +362,7 @@ export default function App() {
 
   const plan = async () => {
     setError("");
-    setLoading("Agent 3 — placement + expected metrics…");
+    setLoading("Agent 3: placement + expected metrics…");
     try {
       const res = await api("/placement", {
         method: "POST",
@@ -487,7 +494,7 @@ export default function App() {
                     cursor: "pointer", color: T.ink, border: `1px solid ${T.line}`,
                   }}
                 >
-                  ☰
+                  <Menu01 width={20} height={20} />
                 </button>
                 <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ width: 26, height: 26, borderRadius: 8, background: T.blue, display: "inline-flex", alignItems: "center", justifyContent: "center", color: "#fff", fontFamily: T.serif, fontSize: 16 }}>A</span>
@@ -544,12 +551,12 @@ function blob(top, side, sx, bottom, size, color, isBottom) {
 }
 
 /* ---------- shell ---------- */
-/* the chained/solo switch — the one control that changes how the agents run */
+/* the chained/solo switch - the one control that changes how the agents run */
 function ModeToggle({ mode, onSwitch, onHelp }) {
   const isMobile = useIsMobile();
   const opts = [
-    { k: "chain", icon: "⛓", label: "Chained pipeline" },
-    { k: "solo", icon: "◇", label: "Solo agents" },
+    { k: "chain", icon: Link01, label: "Chained pipeline" },
+    { k: "solo", icon: Diamond01, label: "Solo agents" },
   ];
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 20, flexWrap: "wrap" }}>
@@ -576,7 +583,7 @@ function ModeToggle({ mode, onSwitch, onHelp }) {
                 boxShadow: active ? "0 4px 14px rgba(31,117,254,0.30)" : "none",
               }}
             >
-              <span style={{ fontSize: 14 }}>{o.icon}</span>
+              <o.icon width={15} height={15} />
               {o.label}
             </button>
           );
@@ -586,7 +593,7 @@ function ModeToggle({ mode, onSwitch, onHelp }) {
         <span style={{ fontSize: 12.5, color: T.faint, fontWeight: 500, maxWidth: 440, lineHeight: 1.45 }}>
           {mode === "chain"
             ? "Agents hand off 1 → 2 → 3 through human approval gates."
-            : "Each agent runs standalone — no gates, no handoffs. Jump straight to any step (e.g. just generate an ad)."}
+            : "Each agent runs standalone with no gates and no handoffs. Jump straight to any step (e.g. just generate an ad)."}
         </span>
       )}
       <button
@@ -608,15 +615,7 @@ function ModeToggle({ mode, onSwitch, onHelp }) {
           background: "rgba(255,255,255,0.75)",
         }}
       >
-        <span
-          style={{
-            width: 19, height: 19, borderRadius: "50%", background: T.blue, color: "#fff",
-            display: "inline-flex", alignItems: "center", justifyContent: "center",
-            fontSize: 12, fontFamily: T.serif,
-          }}
-        >
-          ?
-        </span>
+        <HelpCircle width={17} height={17} />
         How it works
       </button>
     </div>
@@ -624,7 +623,7 @@ function ModeToggle({ mode, onSwitch, onHelp }) {
 }
 
 /* ---------- help drawer: the non-technical "what do I do here" guide ---------- */
-function HelpStep({ n, icon, title, children, you, last }) {
+function HelpStep({ n, icon: StepIcon, title, children, you, last }) {
   return (
     <div style={{ display: "flex", gap: 14 }}>
       {/* rail: numbered node + connector */}
@@ -637,7 +636,7 @@ function HelpStep({ n, icon, title, children, you, last }) {
             boxShadow: `0 5px 14px ${you ? "rgba(23,138,80,0.35)" : "rgba(31,117,254,0.35)"}`,
           }}
         >
-          {icon}
+          <StepIcon width={17} height={17} />
         </div>
         {!last && (
           <div style={{ width: 2, flex: 1, minHeight: 22, background: "linear-gradient(rgba(31,117,254,0.45), rgba(31,117,254,0.12))", margin: "4px 0" }} />
@@ -688,49 +687,49 @@ function HelpDrawer({ open, onClose, mode }) {
               background: "rgba(255,255,255,0.9)", cursor: "pointer", fontSize: 16, color: T.soft,
             }}
           >
-            ✕
+            <XClose width={16} height={16} style={{ display: "block", margin: "0 auto" }} />
           </button>
         </div>
         <h2 style={{ fontFamily: T.serif, fontSize: 30, fontWeight: 400, margin: "4px 0 8px", letterSpacing: "-0.5px" }}>
           How AdPipeline works
         </h2>
         <p style={{ fontSize: 13.5, color: T.soft, lineHeight: 1.6, margin: "0 0 22px", fontWeight: 500 }}>
-          Three AI teammates build a marketing campaign for you — and nothing ships without
+          Three AI teammates build a marketing campaign for you, and nothing ships without
           your say-so. Here's the whole journey:
         </p>
 
         <Card style={{ padding: "22px 20px", marginBottom: 18 }}>
-          <Label color={T.blue}>⛓ THE CHAINED PIPELINE — START TO PUBLISHED AD</Label>
+          <Label color={T.blue}>THE CHAINED PIPELINE · START TO PUBLISHED AD</Label>
           <div style={{ marginTop: 18 }}>
-            <HelpStep n="STEP 1" icon="🎯" title="Pick a product & a goal" you>
+            <HelpStep n="STEP 1" icon={Target04} title="Pick a product & a goal" you>
               Choose one of the 5 products and type what you want to achieve
               (e.g. "grow sales in the US"). Hit <b>Start campaign</b>.
             </HelpStep>
-            <HelpStep n="STEP 2" icon="🔍" title="Agent 1 researches">
+            <HelpStep n="STEP 2" icon={SearchLg} title="Agent 1 researches">
               It reads the company knowledge base and reports what's going wrong, what's
-              working, and where to focus — every claim shows the document it came from.
+              working, and where to focus. Every claim shows the document it came from.
             </HelpStep>
-            <HelpStep n="STEP 3" icon="✅" title="You approve — or reject with a note" you>
+            <HelpStep n="STEP 3" icon={CheckCircle} title="You approve, or reject with a note" you>
               Happy? Approve, and the research is handed to the planner. Not happy?
               Reject with a comment and the agent redoes it your way.
             </HelpStep>
-            <HelpStep n="STEP 4" icon="🧭" title="Agent 2 builds the plan">
+            <HelpStep n="STEP 4" icon={Compass03} title="Agent 2 builds the plan">
               The approved research becomes a campaign plan: one big creative idea, the
               budget moves that the numbers justify, and this week's next steps.
             </HelpStep>
-            <HelpStep n="STEP 5" icon="✅" title="You approve the plan" you>
-              Same deal — approve to continue, or reject with feedback.
+            <HelpStep n="STEP 5" icon={CheckCircle} title="You approve the plan" you>
+              Same deal: approve to continue, or reject with feedback.
             </HelpStep>
-            <HelpStep n="STEP 6" icon="🎨" title="Agent 3 creates the ads">
+            <HelpStep n="STEP 6" icon={Brush01} title="Agent 3 creates the ads">
               It generates the ad images and copy for your chosen format (product shoot,
               Amazon listing, Meta ads, or full bundle with a video storyboard). You can
               upload a real product photo and add your own art direction.
             </HelpStep>
-            <HelpStep n="STEP 7" icon="📊" title="See where the ads go & what to expect">
+            <HelpStep n="STEP 7" icon={BarChart10} title="See where the ads go & what to expect">
               A placement plan maps each ad to a channel with a budget split, plus honest
               predicted results with confidence bars.
             </HelpStep>
-            <HelpStep n="STEP 8" icon="🚀" title="Approve & publish" you last>
+            <HelpStep n="STEP 8" icon={Rocket02} title="Approve & publish" you last>
               The final green button. The campaign is stamped PUBLISHED and lands in your
               History.
             </HelpStep>
@@ -738,11 +737,11 @@ function HelpDrawer({ open, onClose, mode }) {
         </Card>
 
         <Card style={{ padding: "22px 20px", marginBottom: 18 }}>
-          <Label color={T.blue}>◇ SOLO AGENTS — WHEN YOU DON'T NEED THE WHOLE CHAIN</Label>
+          <Label color={T.blue}>SOLO AGENTS · WHEN YOU DON'T NEED THE WHOLE CHAIN</Label>
           <p style={{ fontSize: 13, color: T.body, lineHeight: 1.65, margin: "12px 0 0", fontWeight: 500 }}>
             Flip the toggle at the top to <b>Solo agents</b> and every step becomes a
             standalone tool with no approval gates. Just need an ad? Go straight to the
-            <b> Creative Studio</b>, pick a product and a format, and generate — your
+            <b> Creative Studio</b>, pick a product and a format, and generate. Your
             objective becomes the brief. Need only a market read or only a plan? Run
             Agent 1 or Agent 2 alone the same way.
           </p>
@@ -752,11 +751,11 @@ function HelpDrawer({ open, onClose, mode }) {
           <Label>GOOD TO KNOW</Label>
           <ul style={{ margin: "10px 0 0", paddingLeft: 18 }}>
             {[
-              "The little blue tags (like campaign_history.md) show which document a claim came from — no source, no claim.",
+              "The little blue tags (like campaign_history.md) show which document a claim came from. No source, no claim.",
               "The dark card in the menu shows the live cost of every AI call. Repeat image prompts are served from cache at $0.00.",
-              "History keeps every past campaign — open one to resume exactly where it left off.",
+              "History keeps every past campaign; open one to resume exactly where it left off.",
               "The Asset Library stores every image ever generated, with its exact cost.",
-              "On any generated image, tap “✎ edit prompt” to tweak and regenerate just that one.",
+              "On any generated image, tap 'edit prompt' to tweak and regenerate just that one.",
             ].map((t, i) => (
               <li key={i} style={{ fontSize: 12.5, color: T.body, lineHeight: 1.65, marginBottom: 7, fontWeight: 500 }}>{t}</li>
             ))}
@@ -774,8 +773,8 @@ function Sidebar({ view, setView, idx, cost, calls, campaign, mode, mobile, onNa
     onNavigate?.(); // mobile drawer closes after choosing a step
   };
   const shelf = [
-    { key: "library", icon: "▤", label: "Asset Library", sub: "Persistent shelf" },
-    { key: "history", icon: "⟲", label: "History", sub: "Past campaigns" },
+    { key: "library", icon: LayersTwo01, label: "Asset Library", sub: "Persistent shelf" },
+    { key: "history", icon: ClockRewind, label: "History", sub: "Past campaigns" },
   ];
   return (
     <aside
@@ -860,7 +859,7 @@ function Sidebar({ view, setView, idx, cost, calls, campaign, mode, mobile, onNa
                   color: active ? "#fff" : done ? T.soft : T.faint,
                 }}
               >
-                {done ? "✓" : n.step}
+                {done ? <Check width={13} height={13} /> : n.step}
               </span>
               <span>
                 <div style={{ fontSize: 14.5, fontWeight: active ? 700 : 500, color: active ? T.blue : T.ink }}>
@@ -912,7 +911,7 @@ function Sidebar({ view, setView, idx, cost, calls, campaign, mode, mobile, onNa
                 color: active ? "#fff" : T.faint,
               }}
             >
-              {n.icon}
+              <n.icon width={14} height={14} />
             </span>
             <span>
               <div style={{ fontSize: 14.5, fontWeight: active ? 700 : 500, color: active ? T.blue : T.ink }}>
@@ -926,7 +925,7 @@ function Sidebar({ view, setView, idx, cost, calls, campaign, mode, mobile, onNa
 
       <div style={{ marginTop: "auto", background: T.ink, borderRadius: 16, padding: "18px 18px", color: "#fff" }}>
         <div style={{ fontFamily: T.mono, fontSize: 10, opacity: 0.65, letterSpacing: 1 }}>
-          {campaign ? `CAMP-${String(campaign.id).padStart(3, "0")}` : "CAMP-—"} · LIVE COST
+          {campaign ? `CAMP-${String(campaign.id).padStart(3, "0")}` : "NO CAMPAIGN"} · LIVE COST
         </div>
         <div style={{ fontFamily: T.serif, fontSize: 32, marginTop: 6 }}>
           ${cost.total_usd.toFixed(2)}
@@ -952,7 +951,7 @@ function statusChip(status) {
     solo_plan: { l: "SOLO · PLAN", c: T.blue, bg: T.blueSoft },
     solo_creative: { l: "SOLO · CREATIVE", c: T.blue, bg: T.blueSoft },
   };
-  const m = map[status] || { l: status?.toUpperCase() || "—", c: T.soft, bg: "rgba(11,29,51,0.05)" };
+  const m = map[status] || { l: status?.toUpperCase() || "-", c: T.soft, bg: "rgba(11,29,51,0.05)" };
   return <Pill color={m.c} bg={m.bg}>{m.l}</Pill>;
 }
 
@@ -1172,10 +1171,14 @@ function Gate({ stage, campaign, decide, rerun, loading, approveLabel }) {
       {rejected ? (
         <div style={{ marginTop: 14 }}>
           <p style={{ fontSize: 13.5, color: T.soft, marginBottom: 14 }}>
-            Feedback stored. Re-run the agent to see it adapt — your feedback is injected into its prompt.
+            Feedback stored. Re-run the agent to see it adapt; your feedback is injected into its prompt.
           </p>
           <Btn onClick={rerun} disabled={!!loading}>
-            {loading ? "Re-running…" : `♻ Re-run ${stage} with feedback`}
+            {loading ? "Re-running…" : (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
+                <RefreshCcw01 width={14} height={14} /> Re-run {stage} with feedback
+              </span>
+            )}
           </Btn>
         </div>
       ) : (
@@ -1201,7 +1204,7 @@ function Gate({ stage, campaign, decide, rerun, loading, approveLabel }) {
           <textarea
             value={fb}
             onChange={(e) => setFb(e.target.value)}
-            placeholder={`Rejection feedback (required to reject) — the ${stage} agent re-runs with it.`}
+            placeholder={`Rejection feedback (required to reject). The ${stage} agent re-runs with it.`}
             style={{ ...inputStyle, marginTop: 14, height: 76, resize: "vertical", fontFamily: T.sans }}
           />
         </>
@@ -1247,7 +1250,7 @@ function Overview({ product, setProduct, objective, setObjective, campaign, star
   const agents = [
     { n: "AGT-1", name: "Research & Monitor", model: "gemini-3.5-flash", does: "Watches campaigns and diagnoses what's going wrong, what lags, what works. Math runs in code, never the model." },
     { n: "AGT-2", name: "Strategy Planner", model: "gemini-3.5-flash + 2.5 search", does: "Turns approved research into a plan: campaign angle, marketing changes grounded in metrics, next steps." },
-    { n: "AGT-3", name: "Creative", model: "gemini-3.5 + gpt-image-2", does: "Executes the approved plan: images (reference-aware), copy, placement, expected metrics — then you publish." },
+    { n: "AGT-3", name: "Creative", model: "gemini-3.5 + gpt-image-2", does: "Executes the approved plan: images (reference-aware), copy, placement, expected metrics. Then you publish." },
   ];
   const soloActions = [
     { run: soloResearch, label: "Run research" },
@@ -1272,7 +1275,7 @@ function Overview({ product, setProduct, objective, setObjective, campaign, star
         sub={
           solo
             ? "Standalone mode: no gates, no handoffs. Run Agent 1 for a grounded diagnosis, Agent 2 for a plan straight from the knowledge base, or jump directly to Agent 3 and just generate an ad. Flip the toggle above to go back to the full chained pipeline."
-            : "Agent 1 researches what's going wrong. You approve — the research hands off to Agent 2, which plans the marketing changes. You approve again — the plan hands off to Agent 3, which generates the creative and gives you an Approve & Publish button with expected metrics."
+            : "Agent 1 researches what's going wrong. You approve, and the research hands off to Agent 2, which plans the marketing changes. You approve again, and the plan hands off to Agent 3, which generates the creative and gives you an Approve & Publish button with expected metrics."
         }
       />
 
@@ -1343,7 +1346,7 @@ function Overview({ product, setProduct, objective, setObjective, campaign, star
           ) : (
             <p style={{ fontSize: 14, color: T.body, lineHeight: 1.65, marginTop: 10, fontWeight: 500 }}>
               Full transparency: inspect the exact system prompt each agent runs with. In the Creative
-              Studio you can also tweak every image prompt — add art direction before generating, or
+              Studio you can also tweak every image prompt: add art direction before generating, or
               edit any asset's prompt and regenerate just that image.
             </p>
           )}
@@ -1356,8 +1359,8 @@ function Overview({ product, setProduct, objective, setObjective, campaign, star
           <p style={{ fontSize: 13, color: T.soft, lineHeight: 1.65, marginTop: 8 }}>
             Real public data (FY2024 Hill's financials, 2025 Meta/Amazon ad benchmarks, India
             quick-commerce, therapeutic pet-diet market, EltaMD/Filorga performance) layered on
-            internal demo data — each doc states its provenance.
-            Agents answer only from here — <strong style={{ color: T.ink }}>no citation, no claim.</strong>
+            internal demo data; each doc states its provenance.
+            Agents answer only from here. <strong style={{ color: T.ink }}>no citation, no claim.</strong>
           </p>
           <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 12 }}>
             <Cite src="hills_regional_sales.md" />
@@ -1376,9 +1379,9 @@ function Research({ campaign, decide, rerunResearch, loading, mode, soloResearch
     return (
       <div>
         <PageTitle
-          eyebrow="Solo · Agent 1 — Research & Monitor"
+          eyebrow="Solo · Agent 1 · Research & Monitor"
           title="What's going wrong"
-          sub="Standalone run — no gates, no handoff. Same deterministic campaign math and grounded, cited diagnosis; use it whenever you just need a portfolio read."
+          sub="Standalone run with no gates and no handoff. Same deterministic campaign math and grounded, cited diagnosis; use it whenever you just need a portfolio read."
         />
         <SoloRunCard
           {...{ product, setProduct, objective, setObjective, loading }}
@@ -1396,15 +1399,15 @@ function Research({ campaign, decide, rerunResearch, loading, mode, soloResearch
   return (
     <div>
       <PageTitle
-        eyebrow="Step 02 · Agent 1 — Research & Monitor"
+        eyebrow="Step 02 · Agent 1 · Research & Monitor"
         title="What's going wrong"
-        sub="Deterministic campaign math + grounded diagnosis. Approve to hand this research to Agent 2 — reject with feedback and Agent 1 re-runs with it."
+        sub="Deterministic campaign math + grounded diagnosis. Approve to hand this research to Agent 2, or reject with feedback and Agent 1 re-runs with it."
         right={!approved && <Btn kind="ghost" small onClick={rerunResearch} disabled={!!loading}>Re-run</Btn>}
       />
 
       {approved && <Stamp label="APPROVED → AGT-2" good />}
       {campaign.used_feedback && (
-        <Banner tone="load">♻ This run consumed prior feedback: "{campaign.used_feedback}"</Banner>
+        <Banner tone="load">This run consumed prior feedback: "{campaign.used_feedback}"</Banner>
       )}
 
       <ResearchBody r={campaign.research} />
@@ -1415,13 +1418,13 @@ function Research({ campaign, decide, rerunResearch, loading, mode, soloResearch
         decide={decide}
         rerun={rerunResearch}
         loading={loading}
-        approveLabel="Approve — hand research to Agent 2 →"
+        approveLabel="Approve and hand research to Agent 2 →"
       />
     </div>
   );
 }
 
-/* the report itself — shared by the chained view and the solo view */
+/* the report itself - shared by the chained view and the solo view */
 function ResearchBody({ r }) {
   const isMobile = useIsMobile();
   const sev = { high: T.red, medium: T.amber, low: T.soft };
@@ -1507,11 +1510,11 @@ function Plan({ campaign, decide, runPlan, loading, mode, soloPlan, product, set
     return (
       <div>
         <PageTitle
-          eyebrow="Solo · Agent 2 — Strategy Planner"
+          eyebrow="Solo · Agent 2 · Strategy Planner"
           title="The plan"
           sub={hasResearch
-            ? "Standalone run — this session's solo research is picked up as optional context, but no approval gate stands in the way."
-            : "Standalone run — no research report required. Agent 2 plans straight from the knowledge base (campaign history, channel metrics, brand guidelines)."}
+            ? "Standalone run. This session's solo research is picked up as optional context, but no approval gate stands in the way."
+            : "Standalone run, no research report required. Agent 2 plans straight from the knowledge base (campaign history, channel metrics, brand guidelines)."}
         />
         <SoloRunCard
           {...{ product, setProduct, objective, setObjective, loading }}
@@ -1531,12 +1534,12 @@ function Plan({ campaign, decide, runPlan, loading, mode, soloPlan, product, set
     return (
       <div>
         <PageTitle
-          eyebrow="Step 03 · Agent 2 — Strategy Planner"
+          eyebrow="Step 03 · Agent 2 · Strategy Planner"
           title="Awaiting the handoff"
-          sub={ready ? "Research is approved — run Agent 2 to build the plan." : "Approve the research at step 02 first; it hands off to Agent 2 automatically."}
+          sub={ready ? "Research is approved. Run Agent 2 to build the plan." : "Approve the research at step 02 first; it hands off to Agent 2 automatically."}
         />
         {ready ? (
-          <Btn onClick={runPlan} disabled={!!loading}>{loading ? "Planning…" : "Run Agent 2 — build the plan"}</Btn>
+          <Btn onClick={runPlan} disabled={!!loading}>{loading ? "Planning…" : "Run Agent 2 and build the plan"}</Btn>
         ) : (
           <Empty label="Approve Agent 1's research first (step 02)." />
         )}
@@ -1547,14 +1550,14 @@ function Plan({ campaign, decide, runPlan, loading, mode, soloPlan, product, set
   return (
     <div>
       <PageTitle
-        eyebrow="Step 03 · Agent 2 — Strategy Planner"
+        eyebrow="Step 03 · Agent 2 · Strategy Planner"
         title="The plan"
-        sub="Built on the approved research. Approve to hand this plan to Agent 3 as its creative brief — reject with feedback and Agent 2 re-plans."
+        sub="Built on the approved research. Approve to hand this plan to Agent 3 as its creative brief, or reject with feedback and Agent 2 re-plans."
       />
 
       {approved && <Stamp label="APPROVED → AGT-3" good />}
       {campaign.used_feedback && (
-        <Banner tone="load">♻ This plan consumed prior feedback: "{campaign.used_feedback}"</Banner>
+        <Banner tone="load">This plan consumed prior feedback: "{campaign.used_feedback}"</Banner>
       )}
 
       <PlanBody p={campaign.plan} />
@@ -1565,13 +1568,13 @@ function Plan({ campaign, decide, runPlan, loading, mode, soloPlan, product, set
         decide={decide}
         rerun={runPlan}
         loading={loading}
-        approveLabel="Approve — hand plan to Agent 3 →"
+        approveLabel="Approve and hand plan to Agent 3 →"
       />
     </div>
   );
 }
 
-/* the plan itself — shared by the chained view and the solo view */
+/* the plan itself - shared by the chained view and the solo view */
 function PlanBody({ p }) {
   return (
     <div>
@@ -1657,11 +1660,11 @@ function CreativeStudio({ product, setProduct, objective, setObjective, campaign
   return (
     <div>
       <PageTitle
-        eyebrow={solo ? "Solo · Agent 3 — Creative" : "Step 04 · Agent 3 — Creative"}
+        eyebrow={solo ? "Solo · Agent 3 · Creative" : "Step 04 · Agent 3 · Creative"}
         title="Creative studio"
         sub={solo
-          ? "Standalone run — no approved plan required: your objective is the brief. Pick a skill, point at a product URL, and just generate the ad. Reference images and art direction still work."
-          : "The approved plan is the brief. Optionally upload a reference image (faithful product renders) and add art direction — every image prompt stays editable after generation."}
+          ? "Standalone run, no approved plan required: your objective is the brief. Pick a skill, point at a product URL, and just generate the ad. Reference images and art direction still work."
+          : "The approved plan is the brief. Optionally upload a reference image (faithful product renders) and add art direction. Every image prompt stays editable after generation."}
       />
 
       {published && <Stamp label="PUBLISHED" good />}
@@ -1673,7 +1676,7 @@ function CreativeStudio({ product, setProduct, objective, setObjective, campaign
               <Pill color={T.blue} bg={T.blueSoft}>SOLO MODE · NO PLAN REQUIRED</Pill>
               {campaign?.plan ? (
                 <span style={{ fontFamily: T.serif, fontSize: 15, fontStyle: "italic", color: T.body }}>
-                  "{campaign.plan.campaign_angle}" — from this session's solo plan
+                  "{campaign.plan.campaign_angle}" · from this session's solo plan
                 </span>
               ) : (
                 <span style={{ fontSize: 13, color: T.soft, fontWeight: 500 }}>
@@ -1683,7 +1686,7 @@ function CreativeStudio({ product, setProduct, objective, setObjective, campaign
             </>
           ) : (
             <>
-              <Pill color={T.green} bg={T.greenSoft}>PLAN APPROVED ✓</Pill>
+              <Pill color={T.green} bg={T.greenSoft}>PLAN APPROVED</Pill>
               {campaign.plan && (
                 <span style={{ fontFamily: T.serif, fontSize: 15, fontStyle: "italic", color: T.body }}>
                   "{campaign.plan.campaign_angle}"
@@ -1749,7 +1752,11 @@ function CreativeStudio({ product, setProduct, objective, setObjective, campaign
                 </>
               ) : (
                 <label style={{ ...inputStyle, textAlign: "center", cursor: "pointer", color: T.soft, fontWeight: 600, fontSize: 13 }}>
-                  {uploading ? "Uploading…" : "⬆ Upload product photo"}
+                  {uploading ? "Uploading…" : (
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, justifyContent: "center" }}>
+                      <Upload01 width={14} height={14} /> Upload product photo
+                    </span>
+                  )}
                   <input type="file" accept="image/png,image/jpeg" onChange={onRef} style={{ display: "none" }} />
                 </label>
               )}
@@ -1845,7 +1852,7 @@ function CreativeStudio({ product, setProduct, objective, setObjective, campaign
             <div style={{ padding: "15px 22px", borderBottom: `1px solid ${T.line}`, display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
               <Label>PLACEMENT PLAN</Label>
               {placement ? (
-                <Label color={T.green}>PROJECTIONS FEED AGENT 1 NEXT CYCLE — LOOP CLOSED</Label>
+                <Label color={T.green}>PROJECTIONS FEED AGENT 1 NEXT CYCLE · LOOP CLOSED</Label>
               ) : (
                 <Btn small onClick={plan} disabled={!!loading}>
                   {loading ? "Planning…" : "Run placement + expected metrics"}
@@ -1859,7 +1866,7 @@ function CreativeStudio({ product, setProduct, objective, setObjective, campaign
                   <span style={{ color: T.body, minWidth: 180, fontWeight: 500 }}>{pl.platform} · {pl.format}</span>
                   <span style={{ fontFamily: T.serif, fontSize: 21, color: T.blue, minWidth: 56 }}>{pl.budget_pct}%</span>
                   <span style={{ marginLeft: "auto", fontSize: 12.5, color: T.soft, fontWeight: 500, textAlign: "right", flex: "1 1 220px" }}>
-                    {pl.projected_metric} — {pl.rationale}
+                    {pl.projected_metric} · {pl.rationale}
                   </span>
                 </div>
               ))
@@ -1903,13 +1910,13 @@ function CreativeStudio({ product, setProduct, objective, setObjective, campaign
           <Card style={{ marginTop: 14, display: "flex", gap: 18, alignItems: "center", flexWrap: "wrap", background: published ? T.greenSoft : "rgba(255,255,255,0.75)" }}>
             {published ? (
               <>
-                <Pill color="#fff" bg={T.green}>PUBLISHED ✓</Pill>
+                <Pill color="#fff" bg={T.green}>PUBLISHED</Pill>
                 <div style={{ flex: 1, minWidth: 280 }}>
                   <div style={{ fontFamily: T.serif, fontSize: 20 }}>
                     Live{published.channels?.length ? ` on ${published.channels.join(", ")}` : ""}.
                   </div>
                   <p style={{ fontSize: 12.5, color: T.soft, marginTop: 4 }}>
-                    {published.note || "Recorded in DB — the ad-platform API call goes here in production."} Results feed Agent 1 next cycle.
+                    {published.note || "Recorded in DB; the ad-platform API call goes here in production."} Results feed Agent 1 next cycle.
                   </p>
                 </div>
               </>
@@ -1986,7 +1993,11 @@ function AssetTile({ a: initial, onCost }) {
           <span style={{ fontSize: 13, fontWeight: 700 }}>{a.kind}</span>
           <span style={{ display: "flex", gap: 10 }}>
             <span onClick={() => { setMode(mode === "edit" ? "closed" : "edit"); setDraft(a.prompt); }} style={{ fontFamily: T.mono, fontSize: 10.5, color: T.blue, cursor: "pointer", fontWeight: 700 }}>
-              {mode === "edit" ? "cancel" : "✎ edit prompt"}
+              {mode === "edit" ? "cancel" : (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  <Edit02 width={11} height={11} /> edit prompt
+                </span>
+              )}
             </span>
             <span onClick={() => setMode(mode === "view" ? "closed" : "view")} style={{ fontFamily: T.mono, fontSize: 10.5, color: T.soft, cursor: "pointer" }}>
               {mode === "view" ? "hide" : "prompt"}
@@ -2035,7 +2046,7 @@ function VideoPanel({ creative }) {
           <Label>VIDEO · SEEDANCE T2V (OPTIONAL)</Label>
           <p style={{ fontSize: 13, color: T.soft, marginTop: 6, lineHeight: 1.55, maxWidth: 560 }}>
             The /bundle skill wrote a ready-to-run text-to-video prompt. Rendering is a separate,
-            explicit call — one 5s / 720p clip per creative, never triggered automatically.
+            explicit call: one 5s / 720p clip per creative, never triggered automatically.
           </p>
         </div>
         {(!video || video.status === "error") && (
@@ -2058,7 +2069,7 @@ function VideoPanel({ creative }) {
       )}
       {video?.status === "disabled" && (
         <div style={{ marginTop: 14 }}>
-          <Pill color={T.amber} bg={T.amberSoft}>SEEDANCE_API_KEY NOT SET — PROMPT READY</Pill>
+          <Pill color={T.amber} bg={T.amberSoft}>SEEDANCE_API_KEY NOT SET · PROMPT READY</Pill>
           <p style={{ fontFamily: T.mono, fontSize: 12, color: T.body, marginTop: 10, lineHeight: 1.6, background: "rgba(11,29,51,0.04)", padding: "12px 14px", borderRadius: 10 }}>
             {video.prompt}
           </p>
@@ -2084,12 +2095,12 @@ function History({ onOpen }) {
       <PageTitle
         eyebrow="Persistent shelf · outside the numbered pipeline"
         title="History"
-        sub="Everything you previously generated — every campaign, its stage decisions, creatives and spend. Open one to resume exactly where it left off. Survives every redeploy on the mounted volume."
+        sub="Everything you previously generated: every campaign, its stage decisions, creatives and spend. Open one to resume exactly where it left off. Survives every redeploy on the mounted volume."
       />
       {!items ? (
         <Empty label="Loading…" />
       ) : items.length === 0 ? (
-        <Empty label="No campaigns yet — start one at step 01." />
+        <Empty label="No campaigns yet. Start one at step 01." />
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {items.map((c) => (
@@ -2194,7 +2205,7 @@ function Library({ onCost }) {
       <PageTitle
         eyebrow="Persistent shelf · outside the numbered pipeline"
         title="Asset Library"
-        sub="Every generated asset, priced. The system never pays twice for the same prompt — repeats are served from cache at $0.00. This shelf survives every redeploy on a mounted volume."
+        sub="Every generated asset, priced. The system never pays twice for the same prompt; repeats are served from cache at $0.00. This shelf survives every redeploy on a mounted volume."
       />
 
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: 14 }}>
@@ -2220,7 +2231,7 @@ function Library({ onCost }) {
       </div>
 
       {assets.length === 0 ? (
-        <Empty label="No assets yet — run the creative agent (step 04) to fill the shelf." />
+        <Empty label="No assets yet. Run the creative agent (step 04) to fill the shelf." />
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))", gap: 14 }}>
           {assets.map((a) => (
@@ -2242,7 +2253,7 @@ function Library({ onCost }) {
                   <span style={{ fontFamily: T.mono, fontSize: 10.5, color: T.faint }}>#{a.id}</span>
                 </div>
                 <div style={{ fontFamily: T.mono, fontSize: 10.5, color: T.soft, marginTop: 5 }}>
-                  {a.campaign_id ? `camp ${String(a.campaign_id).padStart(3, "0")}` : "library"} · {a.skill || "—"} · {a.brand || "—"}
+                  {a.campaign_id ? `camp ${String(a.campaign_id).padStart(3, "0")}` : "library"} · {a.skill || "-"} · {a.brand || "-"}
                 </div>
                 <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
                   <button onClick={() => act(a.id, "reuse")} disabled={busy === a.id} style={miniBtn(false)}>

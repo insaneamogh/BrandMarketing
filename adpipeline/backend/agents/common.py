@@ -1,6 +1,6 @@
 """Shared agent helpers: context formatting, citation grounding, validated calls.
 
-All chat goes through llm.router (Gemini free tier, gpt-4o-mini lifeline) —
+All chat goes through llm.router (Gemini free tier, gpt-4o-mini lifeline) -
 agents name a task, never a provider.
 """
 import json
@@ -16,10 +16,10 @@ GROUNDING_RULE = (
     "figures, regions, channels, or campaign names that are not in the context.\n"
     "2. Every claim MUST cite its source filename in a `sources` field (or inline "
     "as [src: filename]) using ONLY the filenames shown in the context tags.\n"
-    "3. Copy numbers (CPL, CVR, ROAS, %, $) VERBATIM from the context — never "
+    "3. Copy numbers (CPL, CVR, ROAS, %, $) VERBATIM from the context - never "
     "round, estimate, or recompute them.\n"
     "4. If the context does not support a claim, omit the claim entirely.\n"
-    "5. Return a single JSON object only — no markdown, no prose outside JSON."
+    "5. Return a single JSON object only - no markdown, no prose outside JSON."
 )
 
 
@@ -49,7 +49,7 @@ def feedback_block(feedback: str) -> str:
     return (
         "\n\n## PRIOR HUMAN FEEDBACK (a previous brief was REJECTED)\n"
         "The human approver rejected the last brief for the reason below. This "
-        "feedback OVERRIDES your default emphasis — visibly change your output to "
+        "feedback OVERRIDES your default emphasis - visibly change your output to "
         "address it, and do not repeat the rejected direction:\n"
         f"{feedback}\n"
     )

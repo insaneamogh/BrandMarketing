@@ -1,5 +1,5 @@
 """Orchestrator for the staged handoff pipeline. Plain async Python, no graph
-framework — the state machine is the Campaign.status column:
+framework - the state machine is the Campaign.status column:
 
   POST /campaigns          -> Agent 1 (research)      -> research_pending
   decision approve         -> hand research to Agent 2 -> research_approved
@@ -138,7 +138,7 @@ async def run_plan(campaign_id: int) -> dict:
 
 # ---------------- solo mode (standalone agents, no gates) ----------------
 async def solo_research(product: str, objective: str) -> dict:
-    """Agent 1 standalone — same researcher, no downstream handoff required."""
+    """Agent 1 standalone - same researcher, no downstream handoff required."""
     db = SessionLocal()
     try:
         c = Campaign(product=product, objective=objective,
@@ -155,7 +155,7 @@ async def solo_plan(product: str = None, objective: str = None,
                     campaign_id: int = None) -> dict:
     """Agent 2 standalone. Without a campaign_id it plans from scratch (grounded
     directly in the corpus). With one, any research already on that solo campaign
-    becomes optional context — but it is never required."""
+    becomes optional context - but it is never required."""
     db = SessionLocal()
     try:
         if campaign_id:
@@ -163,7 +163,7 @@ async def solo_plan(product: str = None, objective: str = None,
             if not c:
                 raise ValueError("campaign not found")
             if (c.mode or "chain") != "solo":
-                raise ValueError("solo plan requires a solo campaign — use the chained flow instead")
+                raise ValueError("solo plan requires a solo campaign - use the chained flow instead")
         else:
             if not product or not objective:
                 raise ValueError("product and objective are required to start a solo plan")
@@ -189,7 +189,7 @@ async def solo_plan(product: str = None, objective: str = None,
 async def solo_creative(url: str, skill: str, product: str = None,
                         objective: str = None, campaign_id: int = None,
                         reference_id: str = None, prompt_tweak: str = None) -> dict:
-    """Agent 3 standalone — 'just generate an ad'. No plan required: the objective
+    """Agent 3 standalone - 'just generate an ad'. No plan required: the objective
     (or the product profile alone) is the brief."""
     db = SessionLocal()
     try:
@@ -198,7 +198,7 @@ async def solo_creative(url: str, skill: str, product: str = None,
             if not c:
                 raise ValueError("campaign not found")
             if (c.mode or "chain") != "solo":
-                raise ValueError("solo creative requires a solo campaign — use the chained flow instead")
+                raise ValueError("solo creative requires a solo campaign - use the chained flow instead")
         else:
             c = Campaign(product=product or "Standalone creative",
                          objective=objective or "Standalone ad generation",
@@ -274,7 +274,7 @@ async def _generate_creative(db, c: Campaign, url: str, skill: str,
         reference_path = str(REF_DIR / reference_id)
         p = Path(reference_path)
         if not p.exists():
-            raise ValueError("reference image not found — upload it first")
+            raise ValueError("reference image not found - upload it first")
         reference_png = p.read_bytes()
 
     token = cost.current_campaign_id.set(c.id)
@@ -382,7 +382,7 @@ def publish(creative_id: int) -> dict:
             "published_at": creative.published_at.isoformat() + "Z",
             "assets": len(creative.assets),
             "channels": sorted({p["platform"] for p in placement.get("placements", [])}),
-            "note": "POC publish — recorded in DB; wire the ad-platform API here in production.",
+            "note": "POC publish - recorded in DB; wire the ad-platform API here in production.",
         }
     finally:
         db.close()
@@ -394,7 +394,7 @@ async def run_video(creative_id: int) -> dict:
 
     Never called automatically by a skill run. If SEEDANCE_API_KEY is missing,
     returns status=disabled with the ready-to-run prompt so the demo still has
-    a video story. A finished video is cached on the Creative row — repeat
+    a video story. A finished video is cached on the Creative row - repeat
     clicks cost $0.
     """
     db = SessionLocal()
@@ -402,7 +402,7 @@ async def run_video(creative_id: int) -> dict:
         creative = db.get(Creative, creative_id)
         if not creative:
             raise ValueError("creative not found")
-        if creative.video_json:                      # already generated — cached
+        if creative.video_json:                      # already generated - cached
             prior = json.loads(creative.video_json)
             if prior.get("status") == "done":
                 return {**prior, "cached": True}
@@ -478,7 +478,7 @@ def save_reference(data: bytes, filename: str = "") -> dict:
 
 
 def reference_path(reference_id: str) -> str:
-    # token format is ref_<hex16>.<ext> — reject anything path-like
+    # token format is ref_<hex16>.<ext> - reject anything path-like
     if "/" in reference_id or "\\" in reference_id or ".." in reference_id:
         raise ValueError("invalid reference id")
     p = REF_DIR / reference_id
@@ -489,7 +489,7 @@ def reference_path(reference_id: str) -> str:
 
 # ---------------- history ----------------
 def campaign_detail(campaign_id: int) -> dict:
-    """Full campaign state — used to resume a past campaign from History."""
+    """Full campaign state - used to resume a past campaign from History."""
     db = SessionLocal()
     try:
         c = db.get(Campaign, campaign_id)
@@ -524,7 +524,7 @@ def campaign_detail(campaign_id: int) -> dict:
 
 
 def campaign_history() -> dict:
-    """The 'what did I previously generate' shelf — newest first."""
+    """The 'what did I previously generate' shelf - newest first."""
     db = SessionLocal()
     try:
         rows = db.query(Campaign).order_by(Campaign.id.desc()).all()
@@ -550,7 +550,7 @@ def campaign_history() -> dict:
 
 # ---------------- library ----------------
 def _brand_key(profile: ProductProfile) -> str:
-    """Same family mapping as agents.creative — used for the library brand filter."""
+    """Same family mapping as agents.creative - used for the library brand filter."""
     t = (profile.name + " " + profile.category).lower()
     if any(k in t for k in ("eltamd", "filorga", "ncef", "pca skin", "sunscreen", "spf", "serum", "anti-aging", "skincare")):
         return "skin_health"
@@ -639,7 +639,7 @@ def reuse_asset(asset_id: int) -> dict:
 
 
 async def variant_asset(asset_id: int, prompt: str = None) -> dict:
-    """Re-render an asset — optionally with a USER-EDITED prompt (their
+    """Re-render an asset - optionally with a USER-EDITED prompt (their
     flexibility knob for tweaking a product image).
 
     Goes through the prompt-hash cache: an identical prompt/quality is a $0 hit;

@@ -1,4 +1,4 @@
-"""Agent 1 — Research & Monitor (gemini-2.5-flash, free tier).
+"""Agent 1 - Research & Monitor (gemini-2.5-flash, free tier).
 
 First agent in the handoff chain. Watches the portfolio, diagnoses what's going
 wrong (and what's working), and produces the research report the human approves
@@ -15,26 +15,26 @@ from rag import store
 from schemas import ResearchOutput
 
 SYSTEM = (
-    "You are AGENT 1 — RESEARCH & MONITOR in a 3-agent CPG marketing pipeline "
+    "You are AGENT 1 - RESEARCH & MONITOR in a 3-agent CPG marketing pipeline "
     "(1 research -> human gate -> 2 strategy plan -> human gate -> 3 creative "
     "-> publish). You are the pipeline's early-warning system: you diagnose "
     "what is going wrong, where the product lags, and what is quietly working. "
-    "You cover three portfolios — Hill's pet nutrition (incl. Prescription Diet "
-    "therapeutic), Palmolive personal care, and Skin Health (EltaMD, Filorga) — "
+    "You cover three portfolios - Hill's pet nutrition (incl. Prescription Diet "
+    "therapeutic), Palmolive personal care, and Skin Health (EltaMD, Filorga) - "
     "and the FACTS block tells you which one this run is about; never mix "
     "another portfolio's campaigns into the diagnosis. Your report is read by a "
-    "human approver and then handed VERBATIM to the Strategy Planner — every "
+    "human approver and then handed VERBATIM to the Strategy Planner - every "
     "claim must be decision-grade and cited.\n\n"
     + GROUNDING_RULE + "\n\n"
     "DIAGNOSIS RULES:\n"
     "- All numbers in the FACTS block were computed deterministically in code "
-    "and are AUTHORITATIVE — never recompute, adjust, or second-guess them.\n"
+    "and are AUTHORITATIVE - never recompute, adjust, or second-guess them.\n"
     "- `whats_wrong`: every below-breakeven campaign in FACTS gets an entry with "
     "severity 'high', its evidence quoted verbatim, and a concrete action_hint "
     "(pause, cut spend %, restructure). 'medium' = drifting/declining; 'low' = "
     "watch item. Never invent an issue the FACTS or context don't support.\n"
     "- `lagging`: regions/channels underperforming, each with a concrete cited "
-    "reason (stock-outs, distributor coverage, price gap) — never vague.\n"
+    "reason (stock-outs, distributor coverage, price gap) - never vague.\n"
     "- `whats_working`: efficiency bright spots the planner should double down "
     "on, with their cited numbers.\n"
     "- `scale_recommendation` names the specific scale candidate(s) from FACTS "
@@ -98,7 +98,7 @@ def run(product: str, objective: str, human_feedback: str = "") -> tuple[Researc
     ctx = format_context(chunks)
 
     facts = (
-        f"PRECOMPUTED METRICS (authoritative — do not recompute):\n"
+        f"PRECOMPUTED METRICS (authoritative - do not recompute):\n"
         f"- portfolio: {stats['family']}\n"
         f"- total spend: ${stats['total_spend']:,}\n"
         f"- spend-weighted ROAS: {stats['weighted_roas']}x\n"

@@ -1,4 +1,4 @@
-"""Agent 2 — Strategy Planner (gemini-2.5-flash, free tier).
+"""Agent 2 - Strategy Planner (gemini-2.5-flash, free tier).
 
 Second agent in the handoff chain. Receives the HUMAN-APPROVED research report
 from Agent 1 and turns it into an actionable plan: the campaign angle, concrete
@@ -16,22 +16,22 @@ from rag import store
 from schemas import PlanOutput
 
 SYSTEM = (
-    "You are AGENT 2 — STRATEGY PLANNER in a 3-agent CPG marketing pipeline "
+    "You are AGENT 2 - STRATEGY PLANNER in a 3-agent CPG marketing pipeline "
     "(1 research -> human gate -> 2 strategy plan -> human gate -> 3 creative "
     "-> publish). You receive Agent 1's research report AFTER a human approved "
-    "it — treat that report as established fact and build on it; do not "
+    "it - treat that report as established fact and build on it; do not "
     "re-litigate or contradict it. Your plan becomes Agent 3's creative brief "
     "the moment the human approves it, so `campaign_angle` must be executable "
     "by an image/copy generator without further clarification.\n\n"
     + GROUNDING_RULE + "\n\n"
     "PLANNING RULES:\n"
-    "- `campaign_angle` is a campaign-ready big idea in under 12 words — "
+    "- `campaign_angle` is a campaign-ready big idea in under 12 words - "
     "something a creative team could shoot tomorrow, not a category platitude. "
     "It must directly answer the biggest problem or opportunity in the research.\n"
     "- Every `marketing_change` pairs one concrete change with the verbatim "
     "cited metric that justifies it (`basis_metric`) and a realistic "
     "`expected_impact`. Changes must map to issues/bright-spots in the research "
-    "— no generic best practices.\n"
+    "- no generic best practices.\n"
     "- `recommended_channels` may only contain channels whose economics appear "
     "in the context or research (CPL/CVR/distribution reality).\n"
     "- `next_steps` are 3-6 sequenced, owner-ready actions; the first ones must "
@@ -39,7 +39,7 @@ SYSTEM = (
     "- COMPLIANCE: respect any BANNED CLAIMS in the brand-guidelines context; "
     "never propose an angle or change that needs a banned claim to work.\n"
     "- If a LIVE MARKET SIGNAL block is present, use it only to sharpen or "
-    "re-rank — cite it as [src: live_search]; internal data always wins."
+    "re-rank - cite it as [src: live_search]; internal data always wins."
 )
 
 
@@ -68,14 +68,14 @@ def run(product: str, objective: str, research_json: str = None,
 
     if research_json:
         research_block = (
-            "## APPROVED RESEARCH REPORT (Agent 1, human-approved — build on this)\n"
+            "## APPROVED RESEARCH REPORT (Agent 1, human-approved - build on this)\n"
             f"{research_json}\n"
         )
     else:
         research_block = (
-            "## STANDALONE MODE — NO UPSTREAM RESEARCH\n"
+            "## STANDALONE MODE - NO UPSTREAM RESEARCH\n"
             "This is a solo run: no Agent 1 report exists. Ground every claim "
-            "directly in the retrieved context below — do not assume or invent a "
+            "directly in the retrieved context below - do not assume or invent a "
             "prior diagnosis.\n"
         )
 

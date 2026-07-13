@@ -1,4 +1,4 @@
-"""Repeatable verification suite — run after any corpus/product/agent change.
+"""Repeatable verification suite - run after any corpus/product/agent change.
 
     cd backend && python verify_setup.py
 

@@ -1,7 +1,7 @@
-# Palmolive — Brand & Creative Guidelines
+# Palmolive: Brand & Creative Guidelines
 
 Provenance: internal creative guardrails (demo). BANNED CLAIMS are hard compliance
-rules — they override every other instruction, including human feedback.
+rules - they override every other instruction, including human feedback.
 
 ## Tone
 Warm, sensorial, uplifting. Everyday indulgence made accessible. Confident and
@@ -14,7 +14,7 @@ story and sensory reward (natural oils, fragrance, glow) without over-claiming.
 - Palette: Palmolive green heritage cue plus warm gold/amber for Luminous Oils.
 - Diverse, real people; skin shown naturally (no unrealistic retouching claims).
 
-## BANNED CLAIMS (hard compliance — never generate)
+## BANNED CLAIMS (hard compliance: never generate)
 - No medical or dermatological cure/treatment claims (e.g., "cures eczema",
   "treats dermatitis", "clinically heals").
 - No "chemical-free" or "100% natural" absolute claims (misleading / non-compliant).

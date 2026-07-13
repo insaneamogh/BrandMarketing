@@ -1,7 +1,7 @@
-# Hill's Pet Nutrition — Brand & Creative Guidelines
+# Hill's Pet Nutrition: Brand & Creative Guidelines
 
 Provenance: internal creative guardrails (demo). BANNED CLAIMS are hard compliance
-rules — they override every other instruction, including human feedback.
+rules - they override every other instruction, including human feedback.
 
 ## Tone
 Science-led, caring, credible. Speak as a trusted expert partner to pet parents and
@@ -15,12 +15,12 @@ veterinarians. Warm but precise; never gimmicky. Lead with the pet's wellbeing.
 - Science Diet = pet-specialty warmth; Prescription Diet = clinical, vet-office cues.
 - Youthful Vitality (7+): senior pets, gentle energy, renewal/vitality mood.
 
-## BANNED CLAIMS (hard compliance — never generate)
+## BANNED CLAIMS (hard compliance: never generate)
 - No disease-cure or disease-treatment claims for non-prescription products
   (e.g., "cures arthritis", "treats kidney disease"). Prescription Diet therapeutic
   claims require veterinary substantiation and approved language only.
 - No "reverses aging" or anti-aging cure language.
-- No implied veterinary endorsement without substantiation — do not state or imply
+- No implied veterinary endorsement without substantiation - do not state or imply
   "vets recommend" / "vet approved" unless the specific claim is substantiated for
   that product.
 - No absolute superiority claims ("#1", "best") without substantiation.

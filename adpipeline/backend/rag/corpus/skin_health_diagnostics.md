@@ -1,4 +1,4 @@
-# Colgate Skin Health Portfolio — Diagnostic
+# Colgate Skin Health Portfolio: Diagnostic
 
 Provenance: impairment figures and portfolio facts are REAL public data from
 Colgate-Palmolive filings and earnings releases; competitive reads are internal
@@ -10,7 +10,7 @@ diversify beyond oral and home care: Filorga (French anti-aging skincare, acquir
 2019 for approximately $1.7 billion), plus PCA Skin and EltaMD
 (professional/clinical skincare, both acquired in 2018).
 
-## Growth stalled — the impairment record (real)
+## Growth stalled: the impairment record (real)
 - Q4 2023: Colgate-Palmolive recorded a non-cash, after-tax impairment charge of
   $620 million to adjust the carrying values of goodwill and intangible assets of
   the Filorga skin health business.

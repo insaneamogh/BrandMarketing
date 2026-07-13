@@ -46,7 +46,7 @@ def _tok_len(text: str) -> int:
         try:
             _enc = tiktoken.get_encoding("cl100k_base")
         except Exception:
-            _enc = False  # offline — fall back to a ~4 chars/token estimate
+            _enc = False  # offline - fall back to a ~4 chars/token estimate
     if _enc:
         return len(_enc.encode(text))
     return max(1, len(text) // 4)
@@ -69,7 +69,7 @@ def _chunk(text: str, target_tokens: int = 300):
 
 
 def corpus_fingerprint() -> str:
-    """Hash of the manifest + every corpus file's bytes — detects any change."""
+    """Hash of the manifest + every corpus file's bytes - detects any change."""
     h = hashlib.sha256()
     for fname in sorted(MANIFEST):
         h.update(fname.encode())
@@ -116,7 +116,7 @@ def ingest_if_stale():
         marker.parent.mkdir(parents=True, exist_ok=True)
         marker.write_text(fp)
         print(f"[ingest] embedded {n} chunks (corpus {fp[:12]})")
-    except Exception as e:  # no API key etc. — don't block startup
+    except Exception as e:  # no API key etc. - don't block startup
         print(f"[ingest] skipped: {e}")
 
 

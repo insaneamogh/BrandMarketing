@@ -1,10 +1,10 @@
-"""Provider router — the ONE place the cost policy is enforced.
+"""Provider router - the ONE place the cost policy is enforced.
 
 pick_model(task) -> model id (Gemini free tier for all text/vision).
 chat_json / vision_json dispatch on the model id prefix:
     gemini-*  -> gemini_client (free)  -> on failure, gpt-4o-mini fallback
     gpt-*     -> openai_client (paid)
-embed() dispatches on EMBED_PROVIDER (no silent fallback — the Chroma index is
+embed() dispatches on EMBED_PROVIDER (no silent fallback - the Chroma index is
 dimension-locked to one provider; delete DATA_DIR/chroma before switching).
 generate_image() dispatches on IMAGE_PROVIDER (openai = the $10 budget,
 gemini = free-tier drafts).
@@ -19,11 +19,11 @@ from config import (
 from llm import gemini_client, openai_client
 
 _MAP = {
-    "researcher": MODEL_STRATEGIST,     # Agent 1 — diagnosis needs reasoning
-    "planner": MODEL_STRATEGIST,        # Agent 2 — plan building needs reasoning
-    "placement": MODEL_CREATIVE,        # Agent 3 — placement + expected metrics
-    "vision": MODEL_VISION,             # Agent 3 — URL diagnosis
-    "copy": MODEL_BULK,                 # Agent 3 — copy blocks (lite)
+    "researcher": MODEL_STRATEGIST,     # Agent 1 - diagnosis needs reasoning
+    "planner": MODEL_STRATEGIST,        # Agent 2 - plan building needs reasoning
+    "placement": MODEL_CREATIVE,        # Agent 3 - placement + expected metrics
+    "vision": MODEL_VISION,             # Agent 3 - URL diagnosis
+    "copy": MODEL_BULK,                 # Agent 3 - copy blocks (lite)
 }
 
 

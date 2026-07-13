@@ -86,7 +86,7 @@ def generate_image(prompt: str, aspect: str = "1:1", quality: str = "medium",
                    task: str = "image", reference_png: bytes = None) -> bytes:
     """Image gen. Returns PNG bytes. Raises on failure (caller handles cache).
 
-    reference_png: optional user-uploaded reference — routed through
+    reference_png: optional user-uploaded reference - routed through
     images.edit so the generation stays faithful to the real product.
     Cost is logged at the requested quality tier; a repeat prompt never reaches
     here (the caller's prompt-hash cache short-circuits it at $0).

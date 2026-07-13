@@ -1,4 +1,4 @@
-# AdPipeline — Project Spec (hand-off)
+# AdPipeline: Project Spec (hand-off)
 
 A demo-grade but production-shaped agentic pipeline for CPG marketing, targeting
 Colgate-Palmolive's **Hill's Pet Nutrition** and **Palmolive / skin-health**
@@ -16,8 +16,8 @@ campaign is resumable from **History**.
 
 ```
 Pipeline:  01 Overview → 02 Research (AGT-1) → gate → 03 Plan (AGT-2) → gate → 04 Creative (AGT-3) → Approve & Publish
-Below the divider:  ▤ Asset Library · ⟲ History   (persistent shelves, outlive every campaign)
-        ▲ reject-feedback re-runs the gated agent ┘        └ published results feed AGT-1 next cycle
+Below the divider:  Asset Library · History   (persistent shelves, outlive every campaign)
+        ^ reject-feedback re-runs the gated agent ┘        └ published results feed AGT-1 next cycle
 ```
 
 ## Stack
@@ -25,7 +25,7 @@ Below the divider:  ▤ Asset Library · ⟲ History   (persistent shelves, outl
 Python 3.11, FastAPI, ChromaDB (persistent), Gemini (all text + vision + embeddings
 + search grounding), OpenAI (images only; mini text lifeline), Seedance lite t2v
 (optional video), SQLite/SQLAlchemy (Postgres-swappable), React + Vite. No
-LangGraph/LangChain — plain async Python + a simple orchestrator. Provider policy
+LangGraph/LangChain - plain async Python + a simple orchestrator. Provider policy
 is centralized in `config.py` + `llm/router.py`; agents name a task, never a provider.
 
 ## Model routing (the one rule)
@@ -36,7 +36,7 @@ is centralized in `config.py` + `llm/router.py`; agents name a task, never a pro
 | `google_search` grounding ONLY (Agent 2's live competitor signal) | **`gemini-2.5-flash`** (free tier, $0) | `GEMINI_SEARCH_MODEL` |
 | Image generation + reference-image edits | **`gpt-image-2`** (the $10 budget, tiered) | `IMAGE_MODEL` (or `IMAGE_PROVIDER=gemini` → free `gemini-2.5-flash-image` drafts) |
 | RAG embeddings | `gemini-embedding-001` @768d ($0) | `GEMINI_EMBED_MODEL` / `EMBED_PROVIDER` |
-| Text lifeline when Gemini 429s mid-demo | `gpt-4o-mini` (~$0.001/call) | — |
+| Text lifeline when Gemini 429s mid-demo | `gpt-4o-mini` (~$0.001/call) | - |
 
 Search grounding is the single exception to "everything text on 3.5-flash" because
 the grounding tool is tied to that model tier (`llm/gemini_client.search_enrich`).
@@ -46,10 +46,10 @@ All ids are env-overridable in the Railway dashboard without a code change.
 
 | # | Agent | Model (cost) | Output → handoff |
 |---|-------|--------------|------------------|
-| 1 | Research & Monitor | gemini-3.5-flash ($0) — **math precomputed in code** | summary, whats_wrong (severity+evidence+action), lagging, whats_working, scale rec → **human gate → Agent 2** |
+| 1 | Research & Monitor | gemini-3.5-flash ($0) - **math precomputed in code** | summary, whats_wrong (severity+evidence+action), lagging, whats_working, scale rec → **human gate → Agent 2** |
 | 2 | Strategy Planner | gemini-3.5-flash ($0) + optional google_search on gemini-2.5-flash ($0) | plan_summary, campaign_angle, target segment, metric-grounded marketing_changes, next_steps → **human gate → Agent 3** |
 | 3 | Creative | gemini-3.5-flash vision/copy/placement ($0) + gpt-image-2 (tiered, the $10 budget) | URL diagnosis → copy + images (reference-image aware, prompt tweak, per-asset edit+regenerate) → placement + expected metrics w/ 0-1 probability → **Approve & Publish** |
-| — | Video (optional) | Seedance lite t2v (~$0.30/5s clip, explicit click only) | one mp4 per /bundle creative, cached |
+| - | Video (optional) | Seedance lite t2v (~$0.30/5s clip, explicit click only) | one mp4 per /bundle creative, cached |
 
 State machine = `Campaign.status`: research_pending → research_approved →
 plan_pending → plan_approved → published (reject at a gate → `<stage>_rejected`,
@@ -64,36 +64,36 @@ in planner + copy. Gemini failures fall back to gpt-4o-mini so demos never die.
 
 `/product-shoot` · `/amazon` (listing-compliant main image: pure white bg, ~85%
 frame, no text overlay) · `/meta` (4:5 + 9:16 + hook overlays) · `/bundle` (all +
-6-frame storyboard + text-to-video prompt — video renders only via the explicit
+6-frame storyboard + text-to-video prompt - video renders only via the explicit
 `POST /video` Seedance call, never inside the skill).
 
 Each `image_spec` carries `kind` + `aspect`; the router assigns a **quality tier**
 per kind (`config.QUALITY_BY_KIND`): hero/compliance → `high`, lifestyle/infographic
 → `medium`, storyboard stills → `low`. Tier maps to per-image cost
-(`config.IMAGE_TIERS` — gpt-image 1024² pricing estimates; non-square bills 1.5x
+(`config.IMAGE_TIERS` - gpt-image 1024² pricing estimates; non-square bills 1.5x
 via `config.tier_cost`. Adjust the three tier values if gpt-image-2 list prices
 differ).
 
 ## Prompt-hash caching (the visible cost-discipline story)
 
 - Cache key = `sha256(prompt | aspect | quality | ref_hash)` (`creative.prompt_hash`)
-  — a user-uploaded reference image changes the output, so it is part of the key.
+ - a user-uploaded reference image changes the output, so it is part of the key.
 - Before generating, `orchestrator._cache_lookup(hash)` checks for a prior
-  **real** asset (origin `generated`/`variant`, file present on disk). Hit ⇒ reuse
+  **real** asset (origin `generated`/`variant`, file present on disk). Hit -> reuse
   the file at **$0.00**, `origin="cache_hit"`, and record `saved_usd = tier cost`.
-- Miss ⇒ generate at the tier, write to `DATA_DIR/assets/<hash>.png`, log the cost.
+- Miss -> generate at the tier, write to `DATA_DIR/assets/<hash>.png`, log the cost.
 - Over `MAX_IMAGE_CALLS_PER_RUN`, or on any API failure in `DEMO_MODE`, serve a
   placeholder from `/cache` (`origin="fallback"`, $0, **not** counted as a saving).
 
 The system never pays twice for the same prompt. (Caching only shows real hits when
-API keys are present — offline everything is a placeholder fallback, honestly $0.)
+API keys are present - offline everything is a placeholder fallback, honestly $0.)
 
 ## Asset Library
 
 `Asset` rows carry: `prompt_hash`, `quality`, `aspect`, `brand`, `skill`,
 `campaign_id`, `origin`, `from_cache`, `cache_hit`, `cost_usd`, `path`.
 `creative_id` is nullable (library-origin rows from Reuse/Variant). **Variant**
-accepts an optional user-edited prompt — the per-image tweak flexibility.
+accepts an optional user-edited prompt - the per-image tweak flexibility.
 
 Screen (sidebar, below a divider, outside the numbered pipeline):
 - **4 stats:** assets stored · total image spend · cache hits · dollars saved.
@@ -135,22 +135,22 @@ GET  /health
 
 ## Persistence & deploy (Railway)
 
-**Railway's container filesystem is ephemeral — every deploy/restart/crash wipes it.**
+**Railway's container filesystem is ephemeral - every deploy/restart/crash wipes it.**
 So a single writable location must survive redeploys.
 
 - **`DATA_DIR`** (env) is that location. Add a Railway **Volume**, mount at `/data`,
-  set `DATA_DIR=/data`. Everything persistent lives under it — set in `config.py`,
+  set `DATA_DIR=/data`. Everything persistent lives under it - set in `config.py`,
   never hardcoded elsewhere:
-  - `DATA_DIR/adpipeline.db` — SQLite (campaigns, decisions, assets, cost log)
-  - `DATA_DIR/chroma` — Chroma index (no re-embed / re-cost on cold start)
-  - `DATA_DIR/assets` — generated images, uploaded reference images, Seedance mp4s
+  - `DATA_DIR/adpipeline.db` - SQLite (campaigns, decisions, assets, cost log)
+  - `DATA_DIR/chroma` - Chroma index (no re-embed / re-cost on cold start)
+  - `DATA_DIR/assets` - generated images, uploaded reference images, Seedance mp4s
 - Images/videos served via `GET /assets/{id}` / `GET /videos/{id}` reading from the
-  Volume — **never** static from the frontend, and **never** base64'd into the DB.
+  Volume - **never** static from the frontend, and **never** base64'd into the DB.
 - **Bind `$PORT`:** `uvicorn main:app --host 0.0.0.0 --port $PORT` (`Procfile` /
   `nixpacks.toml` do this). Hardcoding 8000 = failed healthcheck.
 - **Single service:** FastAPI serves `frontend/dist` (built in `nixpacks.toml`).
   One URL, no CORS. Split later if desired.
-- **Env vars (dashboard, never commit `.env`):** `GOOGLE_API_KEY` (required — all
+- **Env vars (dashboard, never commit `.env`):** `GOOGLE_API_KEY` (required - all
   text is Gemini free tier), `OPENAI_API_KEY` (images), `SEEDANCE_API_KEY` (optional
   video), `DATA_DIR`, `MAX_IMAGE_CALLS_PER_RUN`, `DEMO_MODE`, optional
   `IMAGE_PROVIDER` / `IMAGE_MODEL` / `GEMINI_MODEL` / `GEMINI_SEARCH_MODEL` /

@@ -49,9 +49,9 @@ MODEL_GEMINI_LITE = os.getenv("GEMINI_MODEL_LITE", "gemini-3.5-flash")
 MODEL_GEMINI_SEARCH = os.getenv("GEMINI_SEARCH_MODEL", "gemini-2.5-flash")
 
 MODEL_STRATEGIST = MODEL_GEMINI_FLASH  # Agent 1 (researcher) + Agent 2 (planner)
-MODEL_CREATIVE = MODEL_GEMINI_FLASH    # Agent 3 — placement + expected metrics
-MODEL_VISION = MODEL_GEMINI_FLASH      # Agent 3 — URL diagnosis (Gemini vision)
-MODEL_BULK = MODEL_GEMINI_LITE         # Agent 3 — copy blocks
+MODEL_CREATIVE = MODEL_GEMINI_FLASH    # Agent 3 - placement + expected metrics
+MODEL_VISION = MODEL_GEMINI_FLASH      # Agent 3 - URL diagnosis (Gemini vision)
+MODEL_BULK = MODEL_GEMINI_LITE         # Agent 3 - copy blocks
 
 # If a Gemini call fails (rate limit / outage) the router falls back here so a
 # live demo never dies. gpt-4o-mini text is ~$0.001/call.
@@ -67,9 +67,9 @@ MODEL_EMBED_GEMINI = os.getenv("GEMINI_EMBED_MODEL", "gemini-embedding-001")
 EMBED_DIM = 768                        # gemini output_dimensionality (chroma-friendly)
 
 # ---- Images ----------------------------------------------------------------
-# openai (default): gpt-image-2 — best product fidelity + Amazon-compliance for
+# openai (default): gpt-image-2 - best product fidelity + Amazon-compliance for
 #   hero shots. Paid from the $10 budget at the tier prices below.
-# gemini: gemini-2.5-flash-image ("nano banana") — free tier, good for drafts.
+# gemini: gemini-2.5-flash-image ("nano banana") - free tier, good for drafts.
 IMAGE_PROVIDER = os.getenv("IMAGE_PROVIDER", "openai")
 MODEL_IMAGE = os.getenv("IMAGE_MODEL", "gpt-image-2")
 MODEL_IMAGE_GEMINI = os.getenv("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image")
@@ -100,9 +100,9 @@ COST_TABLE = {
     SEEDANCE_MODEL: {"in": 0.0, "out": 0.0},       # priced per video, tracked separately
 }
 
-# Per-image cost by quality tier (USD, gpt-image 1024x1024 pricing estimate —
+# Per-image cost by quality tier (USD, gpt-image 1024x1024 pricing estimate -
 # adjust if gpt-image-2 list prices differ). Portrait/landscape (1024x1536 /
-# 1536x1024) bills 1.5x — tier_cost() applies it.
+# 1536x1024) bills 1.5x - tier_cost() applies it.
 # The router assigns a tier per asset kind; caching means a repeat prompt = $0.00.
 IMAGE_TIERS = {"low": 0.011, "medium": 0.042, "high": 0.167}
 IMAGE_COST = IMAGE_TIERS["medium"]      # default when tier unknown
