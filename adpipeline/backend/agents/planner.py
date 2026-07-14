@@ -91,16 +91,24 @@ def _live_signal(product: str, objective: str = "") -> str:
 
 
 def run(product: str, objective: str, research_json: str = None,
-        human_feedback: str = "") -> tuple[PlanOutput, list]:
+        human_feedback: str = "", on_delta=None) -> tuple[PlanOutput, list]:
     """research_json=None -> STANDALONE (solo) run: plan directly from context."""
+    import concurrent.futures
     query = f"{product} marketing strategy {objective} positioning competitors channels growth"
     # solo runs get campaign history too, since there is no Agent 1 report to lean on
     collections = ["market_intel", "brand_guidelines", "channel_metrics"]
     if not research_json:
         collections.append("campaign_history")
-    chunks = store.retrieve_many(collections, query, k=3)
+    # the google_search grounding call adds 10-30s - run it CONCURRENTLY with
+    # retrieval instead of serially (was a big chunk of the plan-stage latency)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        live_fut = pool.submit(_live_signal, product, objective)
+        chunks = store.retrieve_many(collections, query, k=3)
+        try:
+            live = live_fut.result(timeout=25)   # never let search stall the plan
+        except Exception:
+            live = ""
     ctx = format_context(chunks)
-    live = _live_signal(product, objective)
     live_block = f"\n## LIVE MARKET SIGNAL (Gemini google_search)\n{live}\n" if live else ""
 
     if research_json:
@@ -128,5 +136,5 @@ def run(product: str, objective: str, research_json: str = None,
         '"expected_impact": str, "sources": [filename]}], '
         '"next_steps": [str]}'
     )
-    out = call_validated("planner", SYSTEM, user, PlanOutput)
+    out = call_validated("planner", SYSTEM, user, PlanOutput, on_delta=on_delta)
     return out, chunks

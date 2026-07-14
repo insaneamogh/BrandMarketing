@@ -59,9 +59,11 @@ def feedback_block(feedback: str) -> str:
 
 
 def call_validated(task: str, system: str, user: str,
-                   schema: Type[BaseModel], temperature: float = 0.3) -> BaseModel:
-    """router.chat_json + Pydantic validation. One retry with the schema on error."""
-    data = router.chat_json(task, system, user, temperature)
+                   schema: Type[BaseModel], temperature: float = 0.3,
+                   on_delta=None) -> BaseModel:
+    """router.chat_json + Pydantic validation. One retry with the schema on
+    error. on_delta streams the model's raw output token-by-token to the UI."""
+    data = router.chat_json(task, system, user, temperature, on_delta=on_delta)
     try:
         return schema.model_validate(data)
     except ValidationError as e:

@@ -20,7 +20,8 @@ from typing import List
 
 from config import (
     IMAGE_PROVIDER, EMBED_PROVIDER, MODEL_BULK, MODEL_CREATIVE,
-    MODEL_FALLBACK_TEXT, MODEL_STRATEGIST, MODEL_VISION, OPENAI_API_KEY,
+    MODEL_FALLBACK_TEXT, MODEL_GEMINI_FAST, MODEL_STRATEGIST, MODEL_VISION,
+    OPENAI_API_KEY,
 )
 from llm import gemini_client, openai_client
 
@@ -32,7 +33,8 @@ _MAP = {
     "copy": MODEL_BULK,                 # Agent 3 - copy blocks (lite)
     "image_prompts": MODEL_STRATEGIST,  # Agent 3 - prompt compiler needs the
                                         # strong text model, not lite
-    "refine": MODEL_STRATEGIST,         # objective sharpener (UI sparkle button)
+    "refine": MODEL_GEMINI_FAST,        # objective sharpener (UI sparkle button)
+                                        # - lite-class model, fastest inference
 }
 
 
@@ -41,13 +43,16 @@ def pick_model(task: str) -> str:
 
 
 def chat_json(task: str, system: str, user: str,
-              temperature: float = 0.3) -> dict:
-    """JSON chat routed by task. Gemini free tier first; paid mini as a lifeline
-    so a rate-limited demo never dies (~$0.001/fallback call)."""
+              temperature: float = 0.3, on_delta=None) -> dict:
+    """JSON chat routed by task. Gemini first; gpt-4o-mini as a lifeline so a
+    rate-limited demo never dies (~$0.001/fallback call). on_delta streams
+    token chunks to the caller (Gemini generate_content_stream); the fallback
+    path emits no deltas - callers get the final result either way."""
     model = pick_model(task)
     if model.startswith("gemini"):
         try:
-            return gemini_client.chat_json(model, system, user, task, temperature)
+            return gemini_client.chat_json(model, system, user, task,
+                                           temperature, on_delta=on_delta)
         except Exception:
             if not OPENAI_API_KEY:
                 raise

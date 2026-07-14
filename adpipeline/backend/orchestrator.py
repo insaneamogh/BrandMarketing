@@ -16,6 +16,7 @@ import asyncio
 import hashlib
 import json
 import re
+import threading
 from pathlib import Path
 
 from sqlalchemy import func
@@ -64,20 +65,60 @@ def _campaign_response(db, c: Campaign, used_feedback: str = None) -> dict:
     ).model_dump()
 
 
+# ---------------- streaming bridge (thread deltas -> async events) ----------
+async def _agent_events(fn, *args):
+    """Run a blocking agent fn(*args, on_delta=...) in a thread; yield
+    {'type':'delta','text':...} for every token chunk the model streams, then
+    {'type':'result','data':...}. This is what makes the text agents' output
+    visible live in the UI instead of a 2-minute spinner."""
+    q: asyncio.Queue = asyncio.Queue()
+    loop = asyncio.get_running_loop()
+
+    def on_delta(text):
+        loop.call_soon_threadsafe(q.put_nowait, ("delta", text))
+
+    def worker():
+        try:
+            out = fn(*args, on_delta=on_delta)
+            loop.call_soon_threadsafe(q.put_nowait, ("result", out))
+        except Exception as e:
+            loop.call_soon_threadsafe(q.put_nowait, ("error", e))
+
+    threading.Thread(target=worker, daemon=True).start()
+    while True:
+        kind, payload = await q.get()
+        if kind == "delta":
+            yield {"type": "delta", "text": payload}
+        elif kind == "error":
+            raise payload
+        else:
+            yield {"type": "result", "data": payload}
+            return
+
+
 # ---------------- stage 1: research (Agent 1) ----------------
 async def start_campaign(product: str, objective: str) -> dict:
+    return await _drain(start_campaign_stream(product, objective))
+
+
+async def start_campaign_stream(product: str, objective: str):
     db = SessionLocal()
     try:
         c = Campaign(product=product, objective=objective, status="research_pending")
         db.add(c)
         db.commit()
         db.refresh(c)
-        return await _run_research(db, c)
+        async for ev in _research_events(db, c):
+            yield ev
     finally:
         db.close()
 
 
 async def rerun_research(campaign_id: int) -> dict:
+    return await _drain(rerun_research_stream(campaign_id))
+
+
+async def rerun_research_stream(campaign_id: int):
     db = SessionLocal()
     try:
         c = db.get(Campaign, campaign_id)
@@ -85,17 +126,24 @@ async def rerun_research(campaign_id: int) -> dict:
             raise ValueError("campaign not found")
         if c.status == "published":
             raise ValueError("campaign already published")
-        return await _run_research(db, c)
+        async for ev in _research_events(db, c):
+            yield ev
     finally:
         db.close()
 
 
-async def _run_research(db, c: Campaign) -> dict:
+async def _research_events(db, c: Campaign):
     token = cost.current_campaign_id.set(c.id)
     try:
         fb_rows, feedback = _pending_feedback(db, c.id, "research")
-        research, _ = await asyncio.to_thread(
-            researcher.run, c.product, c.objective, feedback)
+        yield {"type": "status", "step": "research",
+               "message": "Agent 1 diagnosing the portfolio"}
+        research = None
+        async for ev in _agent_events(researcher.run, c.product, c.objective, feedback):
+            if ev["type"] == "result":
+                research = ev["data"][0]
+            else:
+                yield ev
         c.research_json = research.model_dump_json()
         c.plan_json = None                       # stale plan dies with new research
         # solo campaigns have no gates, so there is nothing "pending"
@@ -103,13 +151,17 @@ async def _run_research(db, c: Campaign) -> dict:
         for r in fb_rows:
             r.consumed = 1
         db.commit()
-        return _campaign_response(db, c, feedback)
+        yield {"type": "done", "data": _campaign_response(db, c, feedback)}
     finally:
         cost.current_campaign_id.reset(token)
 
 
 # ---------------- stage 2: plan (Agent 2) ----------------
 async def run_plan(campaign_id: int) -> dict:
+    return await _drain(run_plan_stream(campaign_id))
+
+
+async def run_plan_stream(campaign_id: int):
     db = SessionLocal()
     try:
         c = db.get(Campaign, campaign_id)
@@ -123,14 +175,21 @@ async def run_plan(campaign_id: int) -> dict:
         token = cost.current_campaign_id.set(c.id)
         try:
             fb_rows, feedback = _pending_feedback(db, c.id, "plan")
-            plan, _ = await asyncio.to_thread(
-                planner.run, c.product, c.objective, c.research_json, feedback)
+            yield {"type": "status", "step": "plan",
+                   "message": "Agent 2 building the plan"}
+            plan = None
+            async for ev in _agent_events(planner.run, c.product, c.objective,
+                                          c.research_json, feedback):
+                if ev["type"] == "result":
+                    plan = ev["data"][0]
+                else:
+                    yield ev
             c.plan_json = plan.model_dump_json()
             c.status = "plan_pending"
             for r in fb_rows:
                 r.consumed = 1
             db.commit()
-            return _campaign_response(db, c, feedback)
+            yield {"type": "done", "data": _campaign_response(db, c, feedback)}
         finally:
             cost.current_campaign_id.reset(token)
     finally:
@@ -139,6 +198,10 @@ async def run_plan(campaign_id: int) -> dict:
 
 # ---------------- solo mode (standalone agents, no gates) ----------------
 async def solo_research(product: str, objective: str) -> dict:
+    return await _drain(solo_research_stream(product, objective))
+
+
+async def solo_research_stream(product: str, objective: str):
     """Agent 1 standalone - same researcher, no downstream handoff required."""
     db = SessionLocal()
     try:
@@ -147,13 +210,19 @@ async def solo_research(product: str, objective: str) -> dict:
         db.add(c)
         db.commit()
         db.refresh(c)
-        return await _run_research(db, c)
+        async for ev in _research_events(db, c):
+            yield ev
     finally:
         db.close()
 
 
 async def solo_plan(product: str = None, objective: str = None,
                     campaign_id: int = None) -> dict:
+    return await _drain(solo_plan_stream(product, objective, campaign_id))
+
+
+async def solo_plan_stream(product: str = None, objective: str = None,
+                           campaign_id: int = None):
     """Agent 2 standalone. Without a campaign_id it plans from scratch (grounded
     directly in the corpus). With one, any research already on that solo campaign
     becomes optional context - but it is never required."""
@@ -175,12 +244,19 @@ async def solo_plan(product: str = None, objective: str = None,
             db.refresh(c)
         token = cost.current_campaign_id.set(c.id)
         try:
-            plan, _ = await asyncio.to_thread(
-                planner.run, c.product, c.objective, c.research_json, "")
+            yield {"type": "status", "step": "plan",
+                   "message": "Agent 2 planning standalone"}
+            plan = None
+            async for ev in _agent_events(planner.run, c.product, c.objective,
+                                          c.research_json, ""):
+                if ev["type"] == "result":
+                    plan = ev["data"][0]
+                else:
+                    yield ev
             c.plan_json = plan.model_dump_json()
             c.status = "solo_plan"
             db.commit()
-            return _campaign_response(db, c)
+            yield {"type": "done", "data": _campaign_response(db, c)}
         finally:
             cost.current_campaign_id.reset(token)
     finally:
@@ -421,19 +497,33 @@ async def render_creative_stream(creative_id: int, prompt_edits: list = None):
                     if reference_png else "")
 
         brand = _brand_key(profile)
-        assets_out, calls = [], 0
+        assets_out = []
         token = cost.current_campaign_id.set(creative.campaign_id)
         try:
-            for i, spec in enumerate(prompts):
-                n = max(1, min(4, int(spec.get("n") or 1)))
-                yield {"type": "status", "step": "render",
-                       "message": (f"Rendering {spec['kind']} "
-                                   f"({i + 1}/{len(prompts)}"
-                                   + (f", {n} variations" if n > 1 else "") + ")")}
+            # PARALLEL rendering: the image API takes 20-60s per request, so
+            # sequential rendering made a 4-image set take minutes. Dispatch
+            # every spec concurrently and stream each one as it finishes.
+            # The per-run call cap is allocated up-front (conservatively
+            # assuming every earlier spec generates) so parallelism can never
+            # exceed MAX_IMAGE_CALLS_PER_RUN.
+            offsets, acc = [], 0
+            for spec in prompts:
+                offsets.append(acc)
+                acc += max(1, min(4, int(spec.get("n") or 1)))
+            yield {"type": "status", "step": "render",
+                   "message": (f"Rendering {len(prompts)} prompts in parallel "
+                               f"({acc} image{'s' if acc != 1 else ''})")}
+
+            async def _render(i, spec):
                 recs = await asyncio.to_thread(
-                    creative_agent.render_spec, spec, calls,
+                    creative_agent.render_spec, spec, offsets[i],
                     _cache_lookup, reference_png, ref_hash)
-                calls += sum(1 for r in recs if r["origin"] == "generated")
+                return i, spec, recs
+
+            tasks = [asyncio.create_task(_render(i, spec))
+                     for i, spec in enumerate(prompts)]
+            for fut in asyncio.as_completed(tasks):
+                i, spec, recs = await fut
                 for a in recs:
                     rec = Asset(
                         creative_id=creative.id, campaign_id=creative.campaign_id,

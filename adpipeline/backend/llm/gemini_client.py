@@ -12,8 +12,9 @@ from typing import List
 import requests
 
 from config import (
-    GOOGLE_API_KEY, EMBED_DIM, MODEL_EMBED_GEMINI, MODEL_GEMINI_SEARCH,
-    MODEL_IMAGE_GEMINI,
+    COST_TABLE, GEMINI_CACHED_INPUT_RATE, GEMINI_MAX_OUTPUT_TOKENS,
+    GEMINI_THINKING_BUDGET, GOOGLE_API_KEY, EMBED_DIM, MODEL_EMBED_GEMINI,
+    MODEL_GEMINI_SEARCH, MODEL_IMAGE_GEMINI,
 )
 from llm import cost
 
@@ -58,43 +59,109 @@ def _with_retry(fn, retries: int = 2):
             time.sleep(3 * (attempt + 1))
 
 
+def _paid_cost(model: str, tin: int, tout: int, tcached: int = 0) -> float:
+    """Per-call USD at paid-tier rates. Tokens served from Gemini's implicit
+    prompt cache bill at GEMINI_CACHED_INPUT_RATE (25%) of the input price."""
+    t = COST_TABLE.get(model, {"in": 0.0, "out": 0.0})
+    fresh_in = max(0, tin - tcached)
+    return ((fresh_in / 1_000_000) * t["in"]
+            + (tcached / 1_000_000) * t["in"] * GEMINI_CACHED_INPUT_RATE
+            + (tout / 1_000_000) * t["out"])
+
+
 def _log(model: str, task: str, resp, t0: float):
     um = getattr(resp, "usage_metadata", None)
+    tin = getattr(um, "prompt_token_count", 0) or 0
+    tout = getattr(um, "candidates_token_count", 0) or 0
+    tcached = getattr(um, "cached_content_token_count", 0) or 0
     cost.log_call(
-        model, task,
-        tokens_in=getattr(um, "prompt_token_count", 0) or 0,
-        tokens_out=getattr(um, "candidates_token_count", 0) or 0,
+        model, task + (":cached" if tcached else ""),
+        tokens_in=tin, tokens_out=tout,
         latency_ms=int((time.time() - t0) * 1000),
+        cost_usd=_paid_cost(model, tin, tout, tcached),
     )
 
 
-# ---------- chat (JSON mode) ----------
-def chat_json(model: str, system: str, user: str, task: str,
-              temperature: float = 0.3) -> dict:
-    """JSON-mode chat. Returns parsed dict. One retry on bad JSON."""
+def _gen_config(system: str, temp: float):
+    """GenerateContentConfig with the latency controls applied:
+    - thinking budget 0 (flash models otherwise 'think' for 30-90s before the
+      first token on big JSON tasks - the cause of the 2-minute agent calls)
+    - max_output_tokens cap so a response can't ramble unbounded."""
     from google.genai import types
+    kwargs = dict(
+        system_instruction=system,
+        temperature=temp,
+        response_mime_type="application/json",
+        max_output_tokens=GEMINI_MAX_OUTPUT_TOKENS,
+    )
+    try:
+        kwargs["thinking_config"] = types.ThinkingConfig(
+            thinking_budget=GEMINI_THINKING_BUDGET)
+    except Exception:
+        pass  # SDK without ThinkingConfig - proceed without
+    return types.GenerateContentConfig(**kwargs)
 
-    def _call(contents, temp):
+
+def _strip_thinking_kwarg(cfg):
+    """Rebuild the config without thinking_config (for models that reject it)."""
+    from google.genai import types
+    return types.GenerateContentConfig(
+        system_instruction=cfg.system_instruction,
+        temperature=cfg.temperature,
+        response_mime_type="application/json",
+        max_output_tokens=GEMINI_MAX_OUTPUT_TOKENS,
+    )
+
+
+# ---------- chat (JSON mode, streaming-capable) ----------
+def chat_json(model: str, system: str, user: str, task: str,
+              temperature: float = 0.3, on_delta=None) -> dict:
+    """JSON-mode chat. Returns parsed dict. One retry on bad JSON.
+
+    on_delta(text_chunk): when provided, uses generate_content_stream and fires
+    for every token chunk as it arrives - this is what feeds the live output
+    console in the UI, so the user watches the JSON being written instead of
+    staring at a spinner."""
+
+    def _call(contents, temp, stream):
+        cfg = _gen_config(system, temp)
         t0 = time.time()
-        resp = _with_retry(lambda: client().models.generate_content(
-            model=model,
-            contents=contents,
-            config=types.GenerateContentConfig(
-                system_instruction=system,
-                temperature=temp,
-                response_mime_type="application/json",
-            ),
-        ))
-        _log(model, task, resp, t0)
-        return resp.text or ""
 
-    text = _call(user, temperature)
+        def _run(config):
+            if stream:
+                pieces, last = [], None
+                for chunk in client().models.generate_content_stream(
+                        model=model, contents=contents, config=config):
+                    piece = chunk.text or ""
+                    if piece:
+                        pieces.append(piece)
+                        try:
+                            on_delta(piece)
+                        except Exception:
+                            pass  # a UI-side error must never kill the call
+                    last = chunk
+                _log(model, task, last, t0) if last is not None else None
+                return "".join(pieces)
+            resp = client().models.generate_content(
+                model=model, contents=contents, config=config)
+            _log(model, task, resp, t0)
+            return resp.text or ""
+
+        try:
+            return _with_retry(lambda: _run(cfg))
+        except Exception as e:
+            # some model ids reject thinking_config - retry once without it
+            if "thinking" in str(e).lower():
+                return _with_retry(lambda: _run(_strip_thinking_kwarg(cfg)))
+            raise
+
+    text = _call(user, temperature, stream=bool(on_delta))
     try:
         return json.loads(text)
     except json.JSONDecodeError:
         text = _call(
             f"{user}\n\nYour previous output was not valid JSON:\n{text}\n\n"
-            "Return ONLY a valid JSON object, nothing else.", 0)
+            "Return ONLY a valid JSON object, nothing else.", 0, stream=False)
         return json.loads(text)
 
 
@@ -133,7 +200,9 @@ def vision_json(model: str, system: str, user: str, image_urls: List[str],
 
 # ---------- embeddings ----------
 def embed(texts: List[str]) -> List[List[float]]:
-    """Free-tier embeddings (gemini-embedding-001 @ 768 dims)."""
+    """Gemini embeddings (gemini-embedding-001 @ 768 dims). Paid tier: input
+    tokens are estimated (~4 chars/token) since the embed response carries no
+    usage metadata - close enough for the cost readout."""
     from google.genai import types
     t0 = time.time()
     resp = _with_retry(lambda: client().models.embed_content(
@@ -141,8 +210,11 @@ def embed(texts: List[str]) -> List[List[float]]:
         contents=texts,
         config=types.EmbedContentConfig(output_dimensionality=EMBED_DIM),
     ))
+    est_tokens = sum(max(1, len(t) // 4) for t in texts)
     cost.log_call(MODEL_EMBED_GEMINI, "embed",
-                  latency_ms=int((time.time() - t0) * 1000))
+                  tokens_in=est_tokens,
+                  latency_ms=int((time.time() - t0) * 1000),
+                  cost_usd=_paid_cost(MODEL_EMBED_GEMINI, est_tokens, 0))
     return [e.values for e in resp.embeddings]
 
 

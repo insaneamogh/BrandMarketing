@@ -83,7 +83,8 @@ const DEFAULT_URL = {
   "Palmolive Luminous Oils":
     "https://www.palmolive.com.au/products-range/body-wash/coconut-oil-frangipani-enriching-shower-gel",
   "EltaMD UV Clear SPF 46": "https://eltamd.com/products/uv-clear-broad-spectrum-spf-46",
-  "Filorga NCEF-Reverse": "https://us.filorga.com/products/ncef-reverse",
+  "Filorga NCEF-Reverse":
+    "https://www.sweetcare.com/in/filorga-nctf-reverse-supreme-regenerating-fluid-p-006540fl?st=01&country=in",
 };
 
 // which brand-guidelines doc + guardrail summary applies to a product name
@@ -244,6 +245,24 @@ export default function App() {
   const updateBusy = (scope, msg) =>
     setBusy((b) => (b[scope] ? { ...b, [scope]: { ...b[scope], msg } } : b));
 
+  /* raw token stream from the text agents (research/plan) - rendered in a live
+     console so the user watches the output being written, not a spinner */
+  const [liveText, setLiveText] = useState("");
+  const onAgentDelta = (scope, label) => (ev) => {
+    if (ev.type === "delta") setLiveText((t) => (t + ev.text).slice(-6000));
+    else if (ev.type === "status") updateBusy(scope, `${label}: ${ev.message}…`);
+  };
+  /* wraps a streaming text-agent task: clears the console before + after */
+  const runStreamTask = (scope, msg, fn) =>
+    runTask(scope, msg, async (signal) => {
+      setLiveText("");
+      try {
+        await fn(signal);
+      } finally {
+        setLiveText("");
+      }
+    });
+
   /* progressive draft: profile -> copy -> prompts land one by one in the UI */
   const onDraftEvent = (scope, skill) => (ev) => {
     if (ev.type === "status") updateBusy(scope, `Agent 3: ${ev.message}…`);
@@ -279,30 +298,25 @@ export default function App() {
       : null;
 
   const soloResearch = () =>
-    runTask("research", "Agent 1 (solo): researching standalone…", async (signal) => {
-      const res = await api("/solo/research", {
-        method: "POST",
-        body: JSON.stringify({ product, objective }),
-        signal,
-      });
+    runStreamTask("research", "Agent 1 (solo): researching standalone…", async (signal) => {
+      setView("research");
+      const res = await apiStream("/solo/research/stream", { product, objective },
+        onAgentDelta("research", "Agent 1"), signal);
       setCampaign(res);
       setCreative(null);
       setPlacement(null);
       setPublished(null);
-      setView("research");
       refreshCost();
     });
 
   const soloPlan = () =>
-    runTask("plan", "Agent 2 (solo): planning straight from the knowledge base…", async (signal) => {
+    runStreamTask("plan", "Agent 2 (solo): planning straight from the knowledge base…", async (signal) => {
       const reuse = soloReuseId();
-      const res = await api("/solo/plan", {
-        method: "POST",
-        body: JSON.stringify(reuse ? { campaign_id: reuse } : { product, objective }),
-        signal,
-      });
-      setCampaign(res);
       setView("plan");
+      const res = await apiStream("/solo/plan/stream",
+        reuse ? { campaign_id: reuse } : { product, objective },
+        onAgentDelta("plan", "Agent 2"), signal);
+      setCampaign(res);
       refreshCost();
     });
 
@@ -330,32 +344,32 @@ export default function App() {
     });
 
   const startCampaign = () =>
-    runTask("research", "Agent 1: researching what's wrong…", async (signal) => {
-      const res = await api("/campaigns", {
-        method: "POST",
-        body: JSON.stringify({ product, objective }),
-        signal,
-      });
-      setCampaign(res);
+    runStreamTask("research", "Agent 1: researching what's wrong…", async (signal) => {
+      setCampaign(null);
       setCreative(null);
       setPlacement(null);
       setPublished(null);
       setView("research");
+      const res = await apiStream("/campaigns/stream", { product, objective },
+        onAgentDelta("research", "Agent 1"), signal);
+      setCampaign(res);
       refreshCost();
     });
 
   const rerunResearch = () =>
-    runTask("research", "Agent 1: re-running with your feedback…", async (signal) => {
-      const res = await api(`/campaigns/${campaign.id}/research`, { method: "POST", signal });
+    runStreamTask("research", "Agent 1: re-running with your feedback…", async (signal) => {
+      const res = await apiStream(`/campaigns/${campaign.id}/research/stream`, {},
+        onAgentDelta("research", "Agent 1"), signal);
       setCampaign(res);
       refreshCost();
     });
 
   const runPlan = () =>
-    runTask("plan", "Agent 2: building the plan from approved research…", async (signal) => {
-      const res = await api(`/campaigns/${campaign.id}/plan`, { method: "POST", signal });
-      setCampaign(res);
+    runStreamTask("plan", "Agent 2: building the plan from approved research…", async (signal) => {
       setView("plan");
+      const res = await apiStream(`/campaigns/${campaign.id}/plan/stream`, {},
+        onAgentDelta("plan", "Agent 2"), signal);
+      setCampaign(res);
       refreshCost();
     });
 
@@ -543,6 +557,7 @@ export default function App() {
                 {b.msg}
               </Banner>
             ))}
+            {liveText && <LiveConsole text={liveText} />}
 
             {view === "overview" && (
               <Overview
@@ -1156,6 +1171,34 @@ const inputStyle = {
   padding: "12px 15px",
   boxSizing: "border-box",
 };
+
+/* live token console: the raw model output streaming in real time while a
+   text agent (research/plan) is writing - replaces the dead-air spinner */
+function LiveConsole({ text }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (ref.current) ref.current.scrollTop = ref.current.scrollHeight;
+  }, [text]);
+  return (
+    <div style={{ ...glass, padding: "14px 18px", marginBottom: 18 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+        <span style={{ width: 8, height: 8, borderRadius: "50%", background: T.green, animation: "none" }} />
+        <Label color={T.green}>AGENT OUTPUT · STREAMING LIVE</Label>
+      </div>
+      <pre
+        ref={ref}
+        style={{
+          fontFamily: T.mono, fontSize: 11, lineHeight: 1.55, color: T.body,
+          whiteSpace: "pre-wrap", wordBreak: "break-word", margin: 0,
+          maxHeight: 180, overflowY: "auto",
+          background: "rgba(11,29,51,0.04)", borderRadius: 10, padding: "10px 12px",
+        }}
+      >
+        {text}
+      </pre>
+    </div>
+  );
+}
 
 function Banner({ tone, children, onCancel }) {
   const map = {

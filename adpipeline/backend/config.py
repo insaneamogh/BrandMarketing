@@ -41,17 +41,31 @@ ASSETS_DIR.mkdir(parents=True, exist_ok=True)
 # Optionally serve the built React bundle from FastAPI (single-service deploy).
 FRONTEND_DIST = ROOT_DIR / "frontend" / "dist"
 
-# ---- Model routing (text = Gemini) ------------------------------------------
-# ALL text-in/text-out tasks run on gemini-3.5-flash. The ONE exception is
-# google_search grounding, which runs on gemini-2.5-flash (MODEL_GEMINI_SEARCH).
+# ---- Model routing (text = Gemini, PAID tier) --------------------------------
+# ALL text-in/text-out tasks run on gemini-3.5-flash. Exceptions:
+#   - google_search grounding runs on gemini-2.5-flash (MODEL_GEMINI_SEARCH)
+#   - the objective-refine sparkle button runs on gemini-3.1-flash-lite
+#     (MODEL_GEMINI_FAST) for lowest-latency inference.
 MODEL_GEMINI_FLASH = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
 MODEL_GEMINI_LITE = os.getenv("GEMINI_MODEL_LITE", "gemini-3.5-flash")
 MODEL_GEMINI_SEARCH = os.getenv("GEMINI_SEARCH_MODEL", "gemini-2.5-flash")
+MODEL_GEMINI_FAST = os.getenv("GEMINI_FAST_MODEL", "gemini-3.1-flash-lite")
 
 MODEL_STRATEGIST = MODEL_GEMINI_FLASH  # Agent 1 (researcher) + Agent 2 (planner)
 MODEL_CREATIVE = MODEL_GEMINI_FLASH    # Agent 3 - placement + expected metrics
 MODEL_VISION = MODEL_GEMINI_FLASH      # Agent 3 - URL diagnosis (Gemini vision)
 MODEL_BULK = MODEL_GEMINI_LITE         # Agent 3 - copy blocks
+
+# ---- Latency controls (why calls were taking ~2 minutes) --------------------
+# Gemini 2.5/3.x flash models ship with "thinking" ON by default: the model
+# silently reasons for 30-90s before the first output token on big structured
+# JSON tasks. Our agents don't need it - the hard numbers are precomputed in
+# code and the schemas are strict - so we set the thinking budget to 0 (off).
+# Raise it (e.g. 512-2048) only if you see quality drop on the planner.
+GEMINI_THINKING_BUDGET = int(os.getenv("GEMINI_THINKING_BUDGET", "0"))
+# Hard cap on output length: no agent response legitimately needs more than
+# ~4k tokens of JSON; an uncapped response can ramble for minutes.
+GEMINI_MAX_OUTPUT_TOKENS = int(os.getenv("GEMINI_MAX_OUTPUT_TOKENS", "4096"))
 
 # If a Gemini call fails (rate limit / outage) the router falls back here so a
 # live demo never dies. gpt-4o-mini text is ~$0.001/call.
@@ -85,18 +99,22 @@ SEEDANCE_RESOLUTION = os.getenv("SEEDANCE_RESOLUTION", "720p")
 SEEDANCE_DURATION_S = int(os.getenv("SEEDANCE_DURATION_S", "5"))
 
 # ---- Cost table (USD per 1M tokens) for the /cost readout -------------------
-# Gemini rows are 0.0: we run on the AI Studio FREE tier. Tokens are still
-# logged so the readout can show "N free calls".
+# PAID-tier Gemini list prices (flash ~$0.30 in / $2.50 out; lite-class models
+# ~$0.10 / $0.40; embeddings ~$0.15 in). Adjust here if your billing differs.
+# Tokens served from Gemini's implicit prompt cache bill at 25% of the input
+# rate - gemini_client detects cached_content_token_count and prices per call.
+GEMINI_CACHED_INPUT_RATE = 0.25   # cached input tokens cost 25% of fresh input
 COST_TABLE = {
     "gpt-4o": {"in": 2.50, "out": 10.00},
     "gpt-4o-mini": {"in": 0.15, "out": 0.60},
     MODEL_EMBED_OPENAI: {"in": 0.02, "out": 0.0},
-    MODEL_GEMINI_FLASH: {"in": 0.0, "out": 0.0},   # free tier
-    MODEL_GEMINI_LITE: {"in": 0.0, "out": 0.0},    # free tier
-    MODEL_GEMINI_SEARCH: {"in": 0.0, "out": 0.0},  # free tier (search grounding)
-    MODEL_EMBED_GEMINI: {"in": 0.0, "out": 0.0},   # free tier
+    MODEL_GEMINI_FLASH: {"in": 0.30, "out": 2.50},
+    MODEL_GEMINI_LITE: {"in": 0.30, "out": 2.50},   # same id as flash by default
+    MODEL_GEMINI_SEARCH: {"in": 0.30, "out": 2.50}, # + search grounding is metered separately by Google
+    MODEL_GEMINI_FAST: {"in": 0.10, "out": 0.40},   # lite-class: fastest + cheapest
+    MODEL_EMBED_GEMINI: {"in": 0.15, "out": 0.0},
     MODEL_IMAGE: {"in": 0.0, "out": 0.0},          # priced per image, tracked separately
-    MODEL_IMAGE_GEMINI: {"in": 0.0, "out": 0.0},   # free tier
+    MODEL_IMAGE_GEMINI: {"in": 0.0, "out": 0.0},
     SEEDANCE_MODEL: {"in": 0.0, "out": 0.0},       # priced per video, tracked separately
 }
 

@@ -126,7 +126,8 @@ def _compute(product: str) -> dict:
     }
 
 
-def run(product: str, objective: str, human_feedback: str = "") -> tuple[ResearchOutput, list]:
+def run(product: str, objective: str, human_feedback: str = "",
+        on_delta=None) -> tuple[ResearchOutput, list]:
     stats = _compute(product)
     query = (f"{product} campaign performance ROAS CPA sales regions channels "
              f"distribution CPL CVR OOS competitors benchmarks {objective}")
@@ -160,5 +161,6 @@ def run(product: str, objective: str, human_feedback: str = "") -> tuple[Researc
         '"whats_working": [{"item": str, "evidence": str, "sources": [filename]}], '
         '"scale_recommendation": str}'
     )
-    out = call_validated("researcher", SYSTEM, user, ResearchOutput)
+    out = call_validated("researcher", SYSTEM, user, ResearchOutput,
+                         on_delta=on_delta)
     return out, chunks

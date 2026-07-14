@@ -97,6 +97,16 @@ OpenAI key covers ~30 full creative runs, and the prompt-hash cache never pays t
 for the same prompt (+reference). `MAX_IMAGE_CALLS_PER_RUN` caps each run;
 `DEMO_MODE=true` serves committed placeholders on any API failure.
 
+> **Paid Gemini tier:** if the Google key is upgraded to paid (no daily caps),
+> text calls bill at flash list rates (~$0.30/M in, $2.50/M out - fractions of a
+> cent per agent call) and the app logs REAL per-call Gemini costs to `/cost`,
+> pricing implicitly-cached prompt tokens at 25% of the input rate (the static
+> system prompts + rules are the shared prefix across all 5 products, so repeat
+> runs hit Gemini's implicit prompt cache automatically). Latency controls:
+> `GEMINI_THINKING_BUDGET=0` (default) disables the 30-90s silent "thinking"
+> phase, `GEMINI_MAX_OUTPUT_TOKENS` caps runaway responses, and research/plan
+> stream token-by-token over SSE into a live console in the UI.
+
 ## The prompt compiler (asset-specific builders)
 
 There is deliberately NO single "generate marketing image" prompt - Hill's pet

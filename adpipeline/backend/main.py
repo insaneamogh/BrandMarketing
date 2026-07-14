@@ -69,6 +69,12 @@ async def create_campaign(inp: CampaignInput):
     return await orchestrator.start_campaign(inp.product, inp.objective)
 
 
+@app.post("/campaigns/stream")
+async def create_campaign_stream(inp: CampaignInput):
+    """SSE: Agent 1's output streams token-by-token (delta events), then done."""
+    return _sse(orchestrator.start_campaign_stream(inp.product, inp.objective))
+
+
 @app.get("/campaigns")
 def list_campaigns():
     """History - everything previously generated, newest first."""
@@ -92,6 +98,12 @@ async def rerun_research(campaign_id: int):
         raise HTTPException(400, str(e))
 
 
+@app.post("/campaigns/{campaign_id}/research/stream")
+async def rerun_research_stream(campaign_id: int):
+    """SSE: Agent 1 re-run with live token deltas."""
+    return _sse(orchestrator.rerun_research_stream(campaign_id))
+
+
 @app.post("/campaigns/{campaign_id}/plan")
 async def run_plan(campaign_id: int):
     """Hand the approved research to Agent 2 (Strategy Planner)."""
@@ -99,6 +111,12 @@ async def run_plan(campaign_id: int):
         return await orchestrator.run_plan(campaign_id)
     except ValueError as e:
         raise HTTPException(400, str(e))
+
+
+@app.post("/campaigns/{campaign_id}/plan/stream")
+async def run_plan_stream(campaign_id: int):
+    """SSE: Agent 2's plan streams token-by-token (delta events), then done."""
+    return _sse(orchestrator.run_plan_stream(campaign_id))
 
 
 @app.post("/campaigns/{campaign_id}/decision")
@@ -120,6 +138,12 @@ async def solo_research(inp: SoloResearchInput):
         raise HTTPException(400, str(e))
 
 
+@app.post("/solo/research/stream")
+async def solo_research_stream(inp: SoloResearchInput):
+    """SSE variant of solo research with live token deltas."""
+    return _sse(orchestrator.solo_research_stream(inp.product, inp.objective))
+
+
 @app.post("/solo/plan")
 async def solo_plan(inp: SoloPlanInput):
     """Agent 2 standalone - plan directly from the knowledge base. Optionally pass
@@ -128,6 +152,12 @@ async def solo_plan(inp: SoloPlanInput):
         return await orchestrator.solo_plan(inp.product, inp.objective, inp.campaign_id)
     except ValueError as e:
         raise HTTPException(400, str(e))
+
+
+@app.post("/solo/plan/stream")
+async def solo_plan_stream(inp: SoloPlanInput):
+    """SSE variant of solo plan with live token deltas."""
+    return _sse(orchestrator.solo_plan_stream(inp.product, inp.objective, inp.campaign_id))
 
 
 @app.post("/solo/creative")
