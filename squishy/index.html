@@ -2,409 +2,79 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&family=Nunito:wght@500;700&display=swap">
 <style>
-  /* One deliberate look (strawberry-milk pastel), painted explicitly for both host themes. */
+  /* One deliberate look, the film's own paper and pinks, painted explicitly so it reads the same on any host theme. */
   :root {
-    --milk: #fff1f5;
-    --lilac: #f1e8ff;
-    --ink: #4a2f45;
-    --ink-soft: #7d6078;
-    --berry: #ff5c8a;
-    --berry-deep: #d93d6d;
-    --night: #3d3552;
+    --paper: #F7EFE4;
+    --ink: #2B2130;
+    --soft: #7A6275;
+    --berry: #D94C7C;
+    --cream: #FFF8EE;
+    --blush: #F6C9D8;
   }
-  html, body { height: 100%; }
+  html, body { min-height: 100%; }
   body {
     margin: 0;
-    background: linear-gradient(165deg, var(--milk) 0%, var(--lilac) 100%);
+    padding-inline: 16px;
+    background:
+      radial-gradient(900px 500px at 50% -10%, var(--blush), transparent 70%),
+      var(--paper);
     color: var(--ink);
     font-family: "Nunito", "Trebuchet MS", system-ui, sans-serif;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    padding-inline: 16px;
-    overflow: hidden;
-    user-select: none;
-    -webkit-tap-highlight-color: transparent;
   }
-  #night {
-    position: fixed; inset: 0;
-    background: radial-gradient(ellipse at 50% 40%, #6b5f86 0%, var(--night) 75%);
-    opacity: 0; pointer-events: none;
-    transition: opacity 1.6s ease;
-  }
-  #night.on { opacity: .92; }
-  #stage {
-    position: relative;
-    width: min(100%, 860px);
-    max-height: 62vh;
-    aspect-ratio: 620 / 330;
-    touch-action: manipulation;
-  }
-  #caption {
-    position: relative;
-    max-width: 34ch;
-    min-height: 5.2em;
+  main {
+    max-width: 960px;
+    margin: 0 auto;
+    padding-block: 44px 64px;
+    display: grid;
+    gap: 18px;
+    justify-items: center;
     text-align: center;
-    font-size: clamp(19px, 4.6vw, 28px);
-    line-height: 1.35;
-    text-wrap: balance;
-    transition: opacity .35s ease, color 1.6s ease;
   }
-  #caption.dark { color: #f6ecff; }
-  #caption .big {
-    font-family: "Fredoka", "Trebuchet MS", sans-serif;
-    font-weight: 600;
-    font-size: clamp(32px, 8vw, 54px);
-    line-height: 1.1;
-    color: var(--berry-deep);
-  }
-  #caption .sub { font-weight: 700; margin-top: 6px; }
-  #caption .ps { font-size: .72em; color: var(--ink-soft); margin-top: 10px; font-style: italic; }
-  .btn {
-    font: 600 18px/1 "Fredoka", "Trebuchet MS", sans-serif;
-    color: #fff;
-    background: var(--berry);
-    border: 0;
-    border-radius: 999px;
-    padding: 14px 28px;
-    box-shadow: 0 6px 0 var(--berry-deep);
-    cursor: pointer;
-    transition: transform .12s ease, box-shadow .12s ease;
-  }
-  .btn:active { transform: translateY(4px); box-shadow: 0 2px 0 var(--berry-deep); }
-  .btn:focus-visible { outline: 3px solid var(--ink); outline-offset: 4px; }
-  #replay { position: relative; margin-top: 4px; }
-  #intro {
-    position: fixed; inset: 0;
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    gap: 22px; padding-inline: 16px; text-align: center;
-    background: linear-gradient(165deg, var(--milk) 0%, var(--lilac) 100%);
-    z-index: 5;
-    transition: opacity .6s ease;
-  }
-  #intro h1 {
+  .eyebrow {
     margin: 0;
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--berry);
+  }
+  h1 {
+    margin: 0;
+    max-width: 18ch;
     font-family: "Fredoka", "Trebuchet MS", sans-serif;
     font-weight: 600;
-    font-size: clamp(28px, 7vw, 46px);
-    line-height: 1.15;
-    max-width: 16ch;
+    font-size: clamp(30px, 6vw, 54px);
+    line-height: 1.06;
     text-wrap: balance;
   }
-  #intro p { margin: 0; color: var(--ink-soft); font-size: 17px; }
-  .bao-mini { width: 110px; animation: wob 1.6s ease-in-out infinite; }
-  @keyframes wob { 0%,100% { transform: scale(1,1); } 50% { transform: scale(1.08,.92) translateY(4px); } }
-  svg { overflow: visible; }
-  .dumpling { cursor: pointer; }
-  @media (prefers-reduced-motion: reduce) { .bao-mini { animation: none; } }
+  .frame {
+    width: 100%;
+    margin-top: 10px;
+    padding: 12px 12px 14px;
+    box-sizing: border-box;
+    background: var(--cream);
+    border-radius: 22px;
+    box-shadow: 0 2px 0 rgba(43, 33, 48, .06), 0 22px 44px -22px rgba(140, 60, 90, .45);
+    transform: rotate(-.4deg);
+  }
+  video {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    height: auto;
+    aspect-ratio: 16 / 9;
+    border-radius: 14px;
+    background: #EE8FB4;
+  }
+  video:focus-visible { outline: 3px solid var(--berry); outline-offset: 4px; }
+  .note { margin: 6px 0 0; max-width: 46ch; font-size: 17px; line-height: 1.5; color: var(--soft); }
 </style>
 
-<div id="night"></div>
-
-<div id="intro">
-  <svg class="bao-mini" viewBox="-110 -155 220 175" aria-hidden="true">
-    <path d="M-100 -8 C-106 -80 -60 -140 0 -146 C60 -140 106 -80 100 -8 C97 8 70 12 0 12 C-70 12 -97 8 -100 -8Z" fill="#ff8fb3"/>
-    <ellipse cx="-34" cy="-52" rx="11" ry="13" fill="#1d1622"/><ellipse cx="34" cy="-52" rx="11" ry="13" fill="#1d1622"/>
-    <circle cx="-30" cy="-57" r="3.5" fill="#fff"/><circle cx="38" cy="-57" r="3.5" fill="#fff"/>
-    <path d="M-13 -30 Q0 -15 13 -30" stroke="#1d1622" stroke-width="4" fill="none" stroke-linecap="round"/>
-  </svg>
-  <h1 id="introTitle">Hey, two little friends have something to tell you</h1>
-  <button class="btn" id="open" type="button">Open 💌</button>
-  <p>Best with sound off and heart on.</p>
-</div>
-
-<svg id="stage" viewBox="90 70 620 330" aria-label="Two dumpling squishies"></svg>
-<div id="caption" aria-live="polite"></div>
-<button class="btn" id="replay" type="button" hidden>Watch again</button>
-
-<script>
-// ============ EDIT THESE ============
-const CONFIG = {
-  name: "my love",   // her name or nickname
-  ps: "P.S. Two brand-new squishies are on their way to you. 🎁", // set to "" to hide
-};
-// A plain #token on the link also sets the name, e.g. …/artifact/abc#Priya
-if (/^#[A-Za-z][A-Za-z._~-]{0,30}$/.test(location.hash)) {
-  CONFIG.name = location.hash.slice(1).replace(/[._~-]/g, " ");
-}
-// ====================================
-
-const NS = "http://www.w3.org/2000/svg";
-const stage = document.getElementById("stage");
-const cap = document.getElementById("caption");
-const night = document.getElementById("night");
-const replayBtn = document.getElementById("replay");
-const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-function el(tag, attrs, parent) {
-  const n = document.createElementNS(NS, tag);
-  for (const k in attrs) n.setAttribute(k, attrs[k]);
-  if (parent) parent.appendChild(n);
-  return n;
-}
-const wait = ms => new Promise(r => setTimeout(r, ms));
-const lerp = (a, b, t) => a + (b - a) * t;
-const easeInOut = t => t < .5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
-function tween(ms, fn, ease = easeInOut) {
-  return new Promise(res => {
-    const t0 = performance.now();
-    function step(now) {
-      const t = Math.min(1, (now - t0) / ms);
-      fn(ease(t));
-      t < 1 ? requestAnimationFrame(step) : res();
-    }
-    requestAnimationFrame(step);
-  });
-}
-
-// ---------- shared defs ----------
-const defs = el("defs", {}, stage);
-const glowGrad = el("radialGradient", { id: "glow" }, defs);
-el("stop", { offset: "0", "stop-color": "#fff6c9", "stop-opacity": ".95" }, glowGrad);
-el("stop", { offset: ".5", "stop-color": "#ffc2dc", "stop-opacity": ".45" }, glowGrad);
-el("stop", { offset: "1", "stop-color": "#ffc2dc", "stop-opacity": "0" }, glowGrad);
-
-const BODY = "M-100 -8 C-106 -80 -60 -140 0 -146 C60 -140 106 -80 100 -8 C97 8 70 12 0 12 C-70 12 -97 8 -100 -8Z";
-const PLEATS = [
-  "M0 -142 Q-30 -128 -62 -104", "M0 -142 Q-14 -122 -30 -100", "M0 -142 Q0 -120 0 -98",
-  "M0 -142 Q14 -122 30 -100", "M0 -142 Q30 -128 62 -104",
-];
-const mouthPath = t => { // t: 0 = sad, 1 = happy
-  const ey = lerp(-22, -31, t), cy = lerp(-34, -14, t);
-  return `M-13 ${ey} Q0 ${cy} 13 ${ey}`;
-};
-
-const shadowLayer = el("g", {}, stage);
-const dumpLayer = el("g", {}, stage);
-const fxLayer = el("g", { "pointer-events": "none" }, stage);
-
-function makeDumpling(id, x, [c1, c2, c3], side) {
-  const g = el("radialGradient", { id: "grad-" + id, cx: ".4", cy: ".35", r: ".75" }, defs);
-  el("stop", { offset: "0", "stop-color": c1 }, g);
-  el("stop", { offset: ".55", "stop-color": c2 }, g);
-  el("stop", { offset: "1", "stop-color": c3 }, g);
-  const clip = el("clipPath", { id: "clip-" + id }, defs);
-  el("path", { d: BODY }, clip);
-
-  const d = { id, x, baseY: 360, jumpY: 0, s: 0, v: 0, tremble: 0, sparkle: .25, opacity: 0, drop: 0, blinkUntil: 0, nextBlink: 1500 + Math.random() * 2500 };
-  d.shadow = el("ellipse", { cx: x, cy: 368, rx: 92, ry: 11, fill: "rgba(74,47,69,.16)" }, shadowLayer);
-  d.outer = el("g", { class: "dumpling" }, dumpLayer);
-  d.glow = el("ellipse", { cx: 0, cy: -70, rx: 170, ry: 140, fill: "url(#glow)", opacity: 0 }, d.outer);
-  d.inner = el("g", {}, d.outer);
-  el("path", { d: BODY, fill: `url(#grad-${id})`, stroke: c3, "stroke-width": 2, "stroke-opacity": .5 }, d.inner);
-
-  // glitter inside the jelly
-  const glit = el("g", { "clip-path": `url(#clip-${id})` }, d.inner);
-  const cols = ["#ffffff", "#fff3b0", "#c9f3ff", "#ffd6f0", c1];
-  d.glitter = [];
-  for (let i = 0; i < 46; i++) {
-    const c = el("circle", {
-      cx: (Math.random() * 190 - 95).toFixed(1), cy: (Math.random() * -150 + 8).toFixed(1),
-      r: (Math.random() * 2.6 + .8).toFixed(1), fill: cols[i % cols.length],
-    }, glit);
-    d.glitter.push({ c, sp: 1.5 + Math.random() * 3, ph: Math.random() * 7 });
-  }
-  PLEATS.forEach(p => el("path", { d: p, stroke: "#fff", "stroke-opacity": .5, "stroke-width": 3.2, fill: "none", "stroke-linecap": "round" }, d.inner));
-  el("ellipse", { cx: -48, cy: -96, rx: 22, ry: 10, fill: "#fff", opacity: .55, transform: "rotate(-35 -48 -96)" }, d.inner);
-
-  d.grey = el("path", { d: BODY, fill: "#6f6b85", opacity: .5 }, d.inner);
-  d.crack = el("path", {
-    d: `M${58 * side} -126 L${46 * side} -104 L${64 * side} -90 L${50 * side} -70 L${66 * side} -52`,
-    stroke: "#2d2338", "stroke-width": 3, fill: "none", "stroke-linejoin": "round", "stroke-linecap": "round",
-  }, d.inner);
-
-  // face
-  d.eyes = [-34, 34].map(ex => el("ellipse", { cx: ex, cy: -52, rx: 11, ry: 13, fill: "#1d1622" }, d.inner));
-  [-30, 38].forEach(hx => el("circle", { cx: hx, cy: -57, r: 3.5, fill: "#fff" }, d.inner));
-  d.mouth = el("path", { d: mouthPath(0), stroke: "#1d1622", "stroke-width": 4, fill: "none", "stroke-linecap": "round" }, d.inner);
-  [-58, 58].forEach(bx => [-7, 0, 7].forEach(o =>
-    el("line", { x1: bx + o - 2, y1: -30, x2: bx + o + 2, y2: -36, stroke: "#ff6f9c", "stroke-width": 2.6, "stroke-linecap": "round" }, d.inner)));
-  d.tears = [-34, 34].map(ex => el("path", { d: `M${ex} -38 q-6 10 0 14 q6 -4 0 -14Z`, fill: "#8fd3ff", opacity: .9 }, d.inner));
-
-  // bandage
-  d.band = el("g", {}, d.inner);
-  d.bandPos = { x: -56 * side, y: -100, r: -32 * side };
-  el("rect", { x: -27, y: -9, width: 54, height: 18, rx: 9, fill: "#f7d9bb", stroke: "#d9ae88", "stroke-width": 1.5 }, d.band);
-  el("rect", { x: -9, y: -7, width: 18, height: 14, rx: 3, fill: "#eec39c" }, d.band);
-  [[-18, -3], [-18, 3], [18, -3], [18, 3]].forEach(([a, b]) => el("circle", { cx: a, cy: b, r: 1.3, fill: "#d9ae88" }, d.band));
-
-  d.outer.addEventListener("pointerdown", e => { poke(d, 7); hearts(e, 6); });
-  return d;
-}
-
-const dumplings = [
-  makeDumpling("bao", 245, ["#ffd1e1", "#ff8fb3", "#e0487c"], 1),
-  makeDumpling("mochi", 555, ["#ecd9ff", "#b58cff", "#7a4fd6"], -1),
-];
-
-function setMood(d, happy) { // 0 sad .. 1 happy
-  d.happy = happy;
-  d.mouth.setAttribute("d", mouthPath(happy));
-  d.grey.setAttribute("opacity", (.5 * (1 - happy)).toFixed(3));
-  d.tears.forEach(t => t.setAttribute("opacity", (.9 * (1 - happy) ** 2).toFixed(3)));
-  d.sparkle = lerp(.25, 1, happy);
-}
-function setBand(d, t) { // 0 on, 1 flown away
-  const p = d.bandPos;
-  d.band.setAttribute("transform", `translate(${p.x + t * 40 * Math.sign(p.x)} ${p.y - t * 180}) rotate(${p.r + t * 260})`);
-  d.band.setAttribute("opacity", 1 - t);
-}
-function poke(d, amt) { d.v += amt; }
-
-// ---------- particles ----------
-const HEART = "M0 4 C-2 -2 -10 -2 -10 4 C-10 9 -4 12 0 16 C4 12 10 9 10 4 C10 -2 2 -2 0 4Z";
-const STAR = "M0 -9 L2.2 -2.2 L9 0 L2.2 2.2 L0 9 L-2.2 2.2 L-9 0 L-2.2 -2.2Z";
-const parts = [];
-function spawn(shape, x, y, vx, vy, color, life, size = 1) {
-  const n = el("path", { d: shape, fill: color }, fxLayer);
-  parts.push({ n, x, y, vx, vy, life, age: 0, size, rot: Math.random() * 60 - 30, vr: Math.random() * 120 - 60 });
-}
-function hearts(e, count) {
-  const pt = stage.createSVGPoint();
-  pt.x = e.clientX; pt.y = e.clientY;
-  const p = pt.matrixTransform(stage.getScreenCTM().inverse());
-  const cols = ["#ff5c8a", "#ff8fb3", "#b58cff", "#ffb347"];
-  for (let i = 0; i < count; i++)
-    spawn(HEART, p.x, p.y, Math.random() * 160 - 80, -90 - Math.random() * 120, cols[i % cols.length], 1.3, .8 + Math.random() * .8);
-}
-function sparkleBurst(d, n) {
-  const cols = ["#fff3b0", "#ffffff", "#ffc2dc", "#c9f3ff"];
-  for (let i = 0; i < n; i++) {
-    const a = Math.random() * Math.PI * 2, r = 70 + Math.random() * 90;
-    spawn(STAR, d.x + Math.cos(a) * r, d.baseY - 70 + Math.sin(a) * r * .8,
-      Math.random() * 40 - 20, -30 - Math.random() * 50, cols[i % cols.length], 1.1 + Math.random() * .6, .6 + Math.random() * .9);
-  }
-}
-
-// ---------- frame loop ----------
-let last = performance.now();
-function frame(now) {
-  const dt = Math.min(.033, (now - last) / 1000); last = now;
-  const t = now / 1000;
-  for (const d of dumplings) {
-    // jelly spring: s > 0 squash, s < 0 stretch
-    d.v += (-190 * d.s - 9 * d.v) * dt;
-    d.s = Math.max(-.3, Math.min(.42, d.s + d.v * dt));
-    const sx = 1 + d.s * .55, sy = 1 - d.s;
-    const trem = reduced ? 0 : d.tremble * Math.sin(t * 38) * 2.2;
-    d.outer.setAttribute("transform", `translate(${d.x + trem} ${d.baseY - d.jumpY - d.drop})`);
-    d.outer.setAttribute("opacity", d.opacity);
-    d.inner.setAttribute("transform", `scale(${sx.toFixed(3)} ${sy.toFixed(3)})`);
-    const h = Math.min(1, (d.jumpY + d.drop) / 200);
-    d.shadow.setAttribute("rx", (92 * sx * (1 - h * .5)).toFixed(1));
-    d.shadow.setAttribute("opacity", (d.opacity * (1 - h * .6)).toFixed(2));
-    for (const gl of d.glitter)
-      gl.c.setAttribute("opacity", ((.35 + .65 * Math.abs(Math.sin(t * gl.sp + gl.ph))) * d.sparkle).toFixed(2));
-    // blink
-    if (now > d.nextBlink) { d.blinkUntil = now + 130; d.nextBlink = now + 2200 + Math.random() * 3200; }
-    const ry = now < d.blinkUntil ? 1.5 : 13;
-    d.eyes.forEach(e => e.setAttribute("ry", ry));
-  }
-  for (let i = parts.length - 1; i >= 0; i--) {
-    const p = parts[i];
-    p.age += dt;
-    if (p.age >= p.life) { p.n.remove(); parts.splice(i, 1); continue; }
-    p.vy += 40 * dt; p.vx *= .985;
-    p.x += p.vx * dt; p.y += p.vy * dt; p.rot += p.vr * dt;
-    const k = p.age / p.life;
-    p.n.setAttribute("transform", `translate(${p.x.toFixed(1)} ${p.y.toFixed(1)}) rotate(${p.rot.toFixed(0)}) scale(${(p.size * (1 - k * .3)).toFixed(2)})`);
-    p.n.setAttribute("opacity", (1 - k * k).toFixed(2));
-  }
-  requestAnimationFrame(frame);
-}
-requestAnimationFrame(frame);
-
-// ---------- story helpers ----------
-async function say(html, ms) {
-  cap.style.opacity = 0;
-  await wait(350);
-  cap.innerHTML = html;
-  cap.style.opacity = 1;
-  await wait(ms);
-}
-async function hop(d, h = 70, ms = 560) {
-  poke(d, 4);                      // crouch
-  await wait(140);
-  d.v -= 6;                        // stretch on take-off
-  await tween(ms, k => { d.jumpY = 4 * h * k * (1 - k); }, k => k);
-  d.jumpY = 0;
-  poke(d, 8);                      // splat on landing
-}
-function esc(s) { return s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
-
-// ---------- the story ----------
-let idleTimer = null;
-async function play() {
-  clearInterval(idleTimer);
-  replayBtn.hidden = true;
-  cap.classList.add("dark");
-  night.classList.add("on");
-  dumplings.forEach(d => { d.opacity = 0; d.drop = 260; d.tremble = 0; setMood(d, 0); setBand(d, 0); d.crack.setAttribute("opacity", 1); d.glow.setAttribute("opacity", 0); });
-
-  await say("Once upon a time, two dumpling squishies lived a very squishy life.", 800);
-  // they drop in, already hurt
-  await Promise.all(dumplings.map((d, i) => wait(i * 250).then(() =>
-    tween(700, k => { d.opacity = Math.min(1, k * 3); d.drop = 260 * (1 - k); }, k => k * k).then(() => { d.drop = 0; poke(d, 9); }))));
-  await wait(2800);
-  dumplings.forEach(d => d.tremble = 1);
-  await say("Then one day, they got squeezed a liiittle too hard… 🥺", 4000);
-  await say("They cracked. And they missed you already.", 3800);
-  dumplings.forEach(d => d.tremble = 0);
-
-  await say("But squishies know a secret…", 2600);
-
-  // the magic
-  night.classList.remove("on");
-  cap.classList.remove("dark");
-  const heal = tween(2800, k => dumplings.forEach(d => {
-    d.glow.setAttribute("opacity", Math.sin(k * Math.PI) * .9 + k * .1);
-    setMood(d, Math.min(1, k * 1.25));
-    d.crack.setAttribute("opacity", 1 - Math.min(1, k * 1.6));
-    setBand(d, Math.min(1, k * 1.4));
-  }));
-  const sparkles = (async () => { for (let i = 0; i < 12; i++) { dumplings.forEach(d => sparkleBurst(d, 4)); await wait(220); } })();
-  cap.style.opacity = 0; await wait(350);
-  cap.innerHTML = "Love is the best glue. ✨"; cap.style.opacity = 1;
-  await Promise.all([heal, sparkles]);
-
-  // happy bounces
-  for (let i = 0; i < 3; i++) {
-    hop(dumplings[0], 80);
-    await wait(380);
-    await hop(dumplings[1], 80);
-    await wait(120);
-  }
-  await wait(400);
-
-  await say("It wasn't anyone's fault. The kiddo just had some really big feelings.", 4600);
-  await say("You give kids a safe place to squeeze those feelings out. Sometimes that's a squishy. 💪", 5200);
-  await say("We got squeezed that hard because we were doing our job. Just like you do yours, every day.", 5400);
-
-  // finale
-  cap.style.opacity = 0; await wait(350);
-  cap.innerHTML = `<div class="big">We love you, ${esc(CONFIG.name)}! 💗</div>
-    <div class="sub">Tap us. We're unbreakable now.</div>` +
-    (CONFIG.ps ? `<div class="ps">${esc(CONFIG.ps)}</div>` : "");
-  cap.style.opacity = 1;
-  const r = stage.getBoundingClientRect();
-  for (let i = 0; i < 4; i++) {
-    hearts({ clientX: r.left + r.width * (.2 + Math.random() * .6), clientY: r.top + r.height * (.3 + Math.random() * .4) }, 7);
-    await wait(180);
-  }
-  replayBtn.hidden = false;
-  idleTimer = setInterval(() => {
-    const d = dumplings[Math.random() < .5 ? 0 : 1];
-    if (d.jumpY === 0) hop(d, 40 + Math.random() * 40, 480);
-  }, 2600);
-}
-
-document.getElementById("introTitle").textContent = `Hey ${CONFIG.name}, two little friends have something to tell you`;
-document.getElementById("open").addEventListener("click", () => {
-  const intro = document.getElementById("intro");
-  intro.style.opacity = 0;
-  setTimeout(() => { intro.hidden = true; play(); }, 600);
-});
-replayBtn.addEventListener("click", play);
-</script>
+<main>
+  <p class="eyebrow">A tiny film</p>
+  <h1>Two squishies have something to tell you</h1>
+  <div class="frame">
+    <video src="squishy-comeback.mp4" poster="poster.jpg" controls playsinline preload="metadata" aria-label="The Squishy Comeback, a 45-second animated film"></video>
+  </div>
+  <p class="note">Turn the sound up and press play. It's about 45 seconds long.</p>
+</main>

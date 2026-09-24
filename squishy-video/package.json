@@ -1,0 +1,14 @@
+{
+  "name": "squishy-video",
+  "private": true,
+  "description": "The Squishy Comeback: a hand-painted animated short with a synthesized soundtrack",
+  "scripts": {
+    "sound": "python3 audio/soundtrack.py",
+    "frames": "node render.mjs --frames --fresh",
+    "video": "node render.mjs --encode --audio=out/soundtrack.wav --out=out/squishy.mp4 --crf=20",
+    "share": "node render.mjs --encode --audio=out/soundtrack.wav --out=out/squishy-720p.mp4 --crf=23 --width=1280"
+  },
+  "devDependencies": {
+    "playwright": "^1.56.1"
+  }
+}
